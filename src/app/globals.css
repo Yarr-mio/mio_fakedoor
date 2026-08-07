@@ -1,26 +1,129 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Mio 브랜드 토큰 — 1.0.0 앱 스크린(다크 코스믹 밤하늘)에서 추출 */
+@theme {
+  --color-night-950: #06061a;
+  --color-night-900: #0a0a1f;
+  --color-night-800: #12122e;
+  --color-night-700: #1c1c42;
+
+  --color-mio-300: #b9bbfa;
+  --color-mio-400: #9b9ef8;
+  --color-mio-500: #8586f0;
+  --color-mio-600: #6e6fdc;
+
+  --color-gold-300: #ffe4a3;
+  --color-gold-400: #ffd97a;
+
+  --color-ink-100: #f5f5fa;
+  --color-ink-300: #c9cadf;
+  --color-ink-400: #a8a9c4;
+  --color-ink-500: #7f80a0;
+
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@font-face {
+  font-family: "Pretendard Variable";
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-night-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  min-height: 100dvh;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-mio-500) 45%, transparent);
+}
+
+/* 별이 떠 있는 배경 — 캔버스 없이 CSS만으로 */
+.starfield {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 55% at 50% -10%, rgba(133, 134, 240, 0.16), transparent 70%),
+    radial-gradient(ellipse 55% 40% at 85% 100%, rgba(13, 0, 43, 0.9), transparent 75%),
+    linear-gradient(180deg, #08081f 0%, #06061a 55%, #0d002b 100%);
+}
+
+.starfield::before,
+.starfield::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  background-size: 240px 240px;
+}
+
+.starfield::before {
+  background-image:
+    radial-gradient(1px 1px at 24px 36px, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 120px 88px, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 196px 150px, rgba(185, 187, 250, 0.9), transparent),
+    radial-gradient(1px 1px at 64px 190px, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 160px 220px, rgba(255, 217, 122, 0.55), transparent);
+  animation: star-drift 160s linear infinite;
+}
+
+.starfield::after {
+  background-image:
+    radial-gradient(1px 1px at 80px 20px, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 210px 70px, rgba(185, 187, 250, 0.45), transparent),
+    radial-gradient(1.5px 1.5px at 30px 130px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 140px 200px, rgba(255, 255, 255, 0.3), transparent);
+  background-size: 300px 300px;
+  animation: star-drift 220s linear infinite reverse;
+}
+
+@keyframes star-drift {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-300px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starfield::before,
+  .starfield::after {
+    animation: none;
+  }
+}
+
+/* 결과/문항 전환용 미세 모션 */
+.fade-up {
+  animation: fade-up 0.45s ease-out both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation: none;
+  }
 }
