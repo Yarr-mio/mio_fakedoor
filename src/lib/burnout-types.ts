@@ -60,6 +60,7 @@ export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
     shareLine: "나, 멈추는 법을 잊은 채 계속 타오르는 중이래",
     heavy: true,
     colors: ["#FF8A5C", "#E4536B"],
+    planet: "/emotion_planet/burning-star.png",
   },
   "masked-galaxy": {
     id: "masked-galaxy",
@@ -83,6 +84,7 @@ export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
     shareLine: "나, 겉은 반짝이는데 속은 조용히 소진 중이래",
     heavy: true,
     colors: ["#9B8CFF", "#E48AC8"],
+    planet: "/emotion_planet/masked-galaxy.png",
   },
   "foggy-nebula": {
     id: "foggy-nebula",
@@ -178,6 +180,7 @@ export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
     shareLine: "나, 아직 반짝이는 새벽 별이래 ✨",
     heavy: false,
     colors: ["#FFD97A", "#FF9E64"],
+    planet: "/emotion_planet/dawn-star.png",
   },
 };
 
