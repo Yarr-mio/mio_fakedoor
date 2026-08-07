@@ -17,9 +17,12 @@ export const metadata: Metadata = {
     title: "나의 번아웃 유형 테스트",
     description: "요즘 나, 왜 이렇게 지쳤지? 1분 만에 알아보는 나의 번아웃 유형",
     locale: "ko_KR",
+    // 카카오톡·슬랙 등 공유 썸네일. 결과 페이지는 유형별 이미지로 덮어쓴다.
+    images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Mio — 마음을 행동으로" }],
   },
   twitter: {
     card: "summary_large_image",
+    images: ["/og-default.png"],
   },
 };
 
