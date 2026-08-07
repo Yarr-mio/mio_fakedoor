@@ -68,9 +68,19 @@ export default function LandingPage() {
                 key={id}
                 className="rounded-xl border border-white/10 bg-white/[0.04] px-2 py-3"
               >
-                <span className="block text-xl" aria-hidden>
-                  {type.glyph}
-                </span>
+                {type.planet ? (
+                  <Image
+                    src={type.planet}
+                    alt=""
+                    width={32}
+                    height={32}
+                    className="mx-auto h-8 w-8 object-contain"
+                  />
+                ) : (
+                  <span className="flex h-8 items-center justify-center text-xl" aria-hidden>
+                    {type.glyph}
+                  </span>
+                )}
                 <span className="mt-1 block text-[0.7rem] font-medium text-ink-400">
                   {type.name}
                 </span>

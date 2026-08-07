@@ -10,6 +10,16 @@ async function loadFont(file: string): Promise<Buffer> {
   return readFile(path.join(process.cwd(), "src/assets", file));
 }
 
+/** 감정 행성 PNG를 data URI로 인라인한다 — OG 렌더러는 외부 URL을 못 가져온다. */
+async function loadPlanetDataUri(planetPath: string): Promise<string | null> {
+  try {
+    const buffer = await readFile(path.join(process.cwd(), "public", planetPath));
+    return `data:image/png;base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ type: string }> },
@@ -21,9 +31,10 @@ export async function GET(
   const burnoutType = BURNOUT_TYPES[type];
   const [colorFrom, colorTo] = burnoutType.colors;
 
-  const [bold, semiBold] = await Promise.all([
+  const [bold, semiBold, planetDataUri] = await Promise.all([
     loadFont("Pretendard-Bold.otf"),
     loadFont("Pretendard-SemiBold.otf"),
+    burnoutType.planet ? loadPlanetDataUri(burnoutType.planet) : Promise.resolve(null),
   ]);
 
   return new ImageResponse(
@@ -76,29 +87,39 @@ export async function GET(
           나의 번아웃 유형 테스트
         </div>
 
-        {/* 유형 오브 */}
-        <div
-          style={{
-            marginTop: 44,
-            width: 140,
-            height: 140,
-            borderRadius: 999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundImage: `linear-gradient(135deg, ${colorFrom}, ${colorTo})`,
-            boxShadow: "0 20px 80px rgba(133,134,240,0.45)",
-          }}
-        >
+        {/* 감정 행성 — 에셋이 있으면 실제 이미지, 없으면 색상 오브 폴백 */}
+        {planetDataUri ? (
+          <img
+            src={planetDataUri}
+            width={190}
+            height={190}
+            alt=""
+            style={{ marginTop: 36, objectFit: "contain" }}
+          />
+        ) : (
           <div
             style={{
-              width: 52,
-              height: 52,
+              marginTop: 44,
+              width: 140,
+              height: 140,
               borderRadius: 999,
-              backgroundColor: "rgba(6,6,26,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundImage: `linear-gradient(135deg, ${colorFrom}, ${colorTo})`,
+              boxShadow: "0 20px 80px rgba(133,134,240,0.45)",
             }}
-          />
-        </div>
+          >
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 999,
+                backgroundColor: "rgba(6,6,26,0.35)",
+              }}
+            />
+          </div>
+        )}
 
         <div
           style={{

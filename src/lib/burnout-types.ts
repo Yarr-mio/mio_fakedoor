@@ -28,8 +28,13 @@ export interface BurnoutType {
   shareLine: string;
   /** 강도가 높은 유형이면 결과 페이지에 마음 돌봄 안내를 함께 노출 */
   heavy: boolean;
-  /** 유형 대표 색 (그라디언트 시작/끝) */
+  /** 유형 대표 색 (그라디언트 시작/끝) — 감정 행성 에셋이 없는 유형의 폴백에 쓰인다 */
   colors: [string, string];
+  /**
+   * 감정 행성 에셋 경로. 디자인 에셋이 준비된 유형만 채운다.
+   * 비어 있으면 colors 그라디언트 오브로 폴백한다.
+   */
+  planet?: string;
 }
 
 export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
@@ -101,6 +106,7 @@ export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
     shareLine: "나, 생각의 안개가 걷히질 않는 유형이래",
     heavy: false,
     colors: ["#6FA8FF", "#8B90F5"],
+    planet: "/emotion_planet/foggy-nebula.png",
   },
   "drifting-comet": {
     id: "drifting-comet",
@@ -124,6 +130,7 @@ export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
     shareLine: "나, 방향을 잃고 궤도만 돌고 있는 중이래",
     heavy: false,
     colors: ["#5CD6C0", "#4FA8E8"],
+    planet: "/emotion_planet/drifting-comet.png",
   },
   "storm-planet": {
     id: "storm-planet",
@@ -147,6 +154,7 @@ export const BURNOUT_TYPES: Record<BurnoutTypeId, BurnoutType> = {
     shareLine: "나, 속에서 폭풍이 몰아치는 중이래",
     heavy: true,
     colors: ["#FFC145", "#F0704F"],
+    planet: "/emotion_planet/storm-planet.png",
   },
   "dawn-star": {
     id: "dawn-star",

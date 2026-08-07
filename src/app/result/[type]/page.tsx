@@ -59,13 +59,31 @@ export default async function ResultPage({ params }: Props) {
         <p className="text-xs font-semibold uppercase tracking-widest text-ink-500">
           나의 번아웃 유형
         </p>
-        <div
-          className="mx-auto mt-5 flex h-24 w-24 items-center justify-center rounded-full text-5xl shadow-[0_12px_40px_rgba(133,134,240,0.3)]"
-          style={{ background: `linear-gradient(135deg, ${colorFrom}, ${colorTo})` }}
-          aria-hidden
-        >
-          {burnoutType.glyph}
-        </div>
+        {burnoutType.planet ? (
+          <div className="relative mx-auto mt-5 h-36 w-36">
+            <div
+              className="absolute inset-4 rounded-full blur-2xl"
+              style={{ background: `linear-gradient(135deg, ${colorFrom}, ${colorTo})`, opacity: 0.35 }}
+              aria-hidden
+            />
+            <Image
+              src={burnoutType.planet}
+              alt={`${burnoutType.name} 감정 행성`}
+              fill
+              priority
+              sizes="144px"
+              className="object-contain"
+            />
+          </div>
+        ) : (
+          <div
+            className="mx-auto mt-5 flex h-24 w-24 items-center justify-center rounded-full text-5xl shadow-[0_12px_40px_rgba(133,134,240,0.3)]"
+            style={{ background: `linear-gradient(135deg, ${colorFrom}, ${colorTo})` }}
+            aria-hidden
+          >
+            {burnoutType.glyph}
+          </div>
+        )}
         <h1 className="mt-5 text-3xl font-bold">{burnoutType.name}</h1>
         <p
           className="mt-2 bg-clip-text text-[0.95rem] font-semibold text-transparent"
