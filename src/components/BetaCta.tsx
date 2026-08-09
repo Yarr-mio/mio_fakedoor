@@ -3,12 +3,29 @@
 /**
  * fake door A/B CTA.
  *  - variant "form": 베타 신청 폼 (이메일 수집)
- *  - variant "link": 직행 버튼. NEXT_PUBLIC_BETA_LINK_URL이 있으면 그리로 보내고,
+ *  - variant "link": 직행 버튼. OS별 스토어 링크가 있으면 그리로 보내고
+ *    (iOS→NEXT_PUBLIC_BETA_LINK_URL=TestFlight, Android→NEXT_PUBLIC_BETA_LINK_URL_ANDROID),
  *    없으면 fake door("정원이 가득 찼어요") → 이메일 폼 폴백으로 수요를 측정한다.
+ *    데스크톱 등 설치 불가 환경도 폼 폴백으로 보낸다.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { getAnonId, getUtm, getVariant, track } from "@/lib/funnel-client";
 import type { Variant } from "@/lib/funnel-events";
+
+type Platform = "ios" | "android" | "other";
+
+function getPlatform(): Platform {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  return "other";
+}
+
+function betaLinkFor(platform: Platform): string | undefined {
+  if (platform === "ios") return process.env.NEXT_PUBLIC_BETA_LINK_URL;
+  if (platform === "android") return process.env.NEXT_PUBLIC_BETA_LINK_URL_ANDROID;
+  return undefined;
+}
 
 interface Props {
   type: string;
@@ -37,18 +54,19 @@ export default function BetaCta({ type, characterName }: Props) {
   }
 
   function handleLinkClick() {
-    track("cta_clicked", { type, variant: "link", kind: "beta_link" });
-    const url = process.env.NEXT_PUBLIC_BETA_LINK_URL;
+    const platform = getPlatform();
+    track("cta_clicked", { type, variant: "link", kind: "beta_link", platform });
+    const url = betaLinkFor(platform);
     if (url) {
-      track("beta_link_redirected", { type });
+      track("beta_link_redirected", { type, platform });
       // keepalive 이벤트가 나갈 시간을 살짝 준다
       setTimeout(() => {
         window.location.href = url;
       }, 150);
       return;
     }
-    // fake door: 도착지가 없다 — 수요만 측정하고 폴백 폼으로 전환
-    track("fakedoor_shown", { type });
+    // fake door: 이 플랫폼용 도착지가 없다 — 수요만 측정하고 폴백 폼으로 전환
+    track("fakedoor_shown", { type, platform });
     setFakedoor(true);
     setFormOpen(true);
   }
