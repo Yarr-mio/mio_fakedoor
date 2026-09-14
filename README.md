@@ -1,65 +1,47 @@
-# mio_funnel — 번아웃 유형 테스트
+# Mio · AI 심리상담 챗봇 프런트
 
-Mio 클로즈 베타 유입을 위한 심리테스트 기반 fake door 퍼널.
-본 서비스(mio_server / mio_app)와 **완전히 분리**되어 있으며, 자체 이벤트 수집으로 수요를 검증한다.
+현재 동작 버전은 v4, 디자인은 v3입니다. [실험 설계·이벤트 계약](docs/experiment-v4.md)에 진입 4개 선택, 10턴, 핵심 전환율, 정성 피드백과 판단 기준을 정리했습니다.
 
-```
-랜딩 → 12문항 테스트 → 번아웃 유형 결과(6종) → 캐릭터 매칭 → 베타 CTA (A/B)
-```
+v3 디자인: 실사 프로필을 일러스트형 AI 페르소나로 교체하고, 수평 Mio 헤더·보라색 토큰·둥근 카드를 적용했습니다. 자세한 변경과 생성 프롬프트는 [v3 디자인 노트](docs/mio-v3-design.md)를 참고하세요. 아래 레퍼런스·이미지 기록은 v2 작업 이력입니다.
 
-## 콘텐츠 구조
-
-- **문항**: 12문항 × 4선택지. MBI 3축을 참고한 4축 스코어링 — 소진(e) · 냉소(c) · 과잉사고(r) · 무기력(a) + `mask`(괜찮은 척) 태그. → `src/lib/quiz-data.ts`
-- **유형 6종**: 과열 항성 · 가면 은하 · 안개 성운 · 표류 혜성 · 폭풍 행성 · 새벽 별. 유형마다 Mio 캐릭터 1명(미오/바우/루미/모모/치치)이 매칭된다. → `src/lib/burnout-types.ts`
-- **판정 규칙**(결정적, 단위 테스트로 고정): mask ≥ 2 & e ≥ 6 → 가면 은하 / 총점 < 12 → 새벽 별 / 그 외 최고 축(동률 시 e > a > r > c). → `src/lib/scoring.ts`
-
-## A/B fake door
-
-variant는 최초 방문 시 50/50 배정 후 localStorage에 고정 (`?v=form` / `?v=link`로 QA 오버라이드).
-
-| variant | CTA | 측정 |
-|---|---|---|
-| `form` | 베타 신청 폼 (이메일) | `cta_clicked` → `beta_submitted` |
-| `link` | 직행 버튼 | `NEXT_PUBLIC_BETA_LINK_URL` 있으면 리다이렉트, **없으면 fake door**: "정원 마감" 안내 + 이메일 폴백 폼 (`fakedoor_shown` → `beta_submitted`) |
-
-## 이벤트
-
-화이트리스트(`src/lib/funnel-events.ts`) 밖 이름은 서버가 조용히 드롭한다 — mio_server의 event-whitelist.yml과 같은 정책.
-
-`page_viewed` `test_started` `question_answered` `test_completed` `result_viewed`
-`share_clicked` `cta_clicked` `beta_form_opened` `beta_submitted` `beta_link_redirected` `fakedoor_shown`
-
-모든 이벤트에 익명 ID(localStorage UUID)·variant·첫 유입 UTM이 붙는다. 로그인 없음.
+사람 형태의 가상 AI 상담사 프로필 → 상담실 → 행동·표정 묘사가 포함된 대화 → 피드백 흐름입니다. 기존 동물 캐릭터/우주 랜딩을 교체했습니다.
 
 ## 실행
 
-```bash
-npm install
-cp .env.example .env.local   # 로컬은 전부 비워도 동작 (수집이 콘솔 로그로 폴백)
-npm run dev
+```sh
+cd /Users/jh/Documents/mio/mio_fakedoor
+npm run dev -- --webpack -p 3100
 ```
 
-- 테스트: `npm test` (스코어링 엔진 15케이스)
-- 통계: `/admin?token=<ADMIN_TOKEN>` — 퍼널 전환율, A/B 비교, 유형 분포, 신청 목록
+- http://localhost:3100 : 상담사 탐색 및 대화
+- http://localhost:3100/review : 현재 브라우저 체험 기록 / JSON 다운로드 / 삭제
+- 검증: `npm run build -- --webpack`, `npm run lint`, `npm test`
+- 정적 결과물: `out/`. 백엔드·DB·AI 호출·배포 없음.
 
-## 배포 (Vercel)
+현재 원본 mio_funnel의 node_modules를 심볼릭 링크로 사용합니다. 다른 컴퓨터에서는 링크를 제외하고 `npm ci`로 설치하세요. 원본 프로젝트는 수정하지 않았습니다. 기존 Next.js/React 구조, lockfile, Pretendard, 익명 이벤트 패턴을 재사용했습니다.
 
-1. 이 레포를 Vercel에 연결
-2. Storage에서 Postgres(Neon) 생성 → `DATABASE_URL` 자동 주입 (스키마는 첫 요청 시 자동 생성, `db/schema.sql` 참고)
-3. 환경변수: `NEXT_PUBLIC_SITE_URL`(배포 도메인), `ADMIN_TOKEN`, (선택) `NEXT_PUBLIC_BETA_LINK_URL`
-4. 유입 링크에 UTM을 붙여 배포: `?utm_source=everytime&utm_campaign=burnout1`
+## 반영한 레퍼런스
 
-## 구조
+사용자 Discord 이미지: 회색 기울임꼴 행동 묘사 + 밝은 대사 + 사람 프로필 아바타 + 보라색 사용자 말풍선.
 
-```
-src/
-├── app/
-│   ├── page.tsx               # 랜딩
-│   ├── test/page.tsx          # 문항 진행
-│   ├── result/[type]/page.tsx # 결과 + 캐릭터 매칭 + A/B CTA
-│   ├── og/[type]/route.tsx    # 유형별 동적 OG 이미지
-│   ├── admin/page.tsx         # 퍼널 통계 (ADMIN_TOKEN)
-│   └── api/{events,submit}/   # 수집 API
-├── components/                # BetaCta(A/B), ShareButtons, 트래커
-└── lib/                       # 문항·유형·캐릭터 데이터, 스코어링, DB, 클라이언트 트래킹
-```
+- https://www.polybuzz.ai/ : 인물 프로필을 먼저 탐색하고 대화로 진입하는 구조
+- https://book.polybuzz.ai/character-profile/basic-setting/greeting : 첫 인사로 인물과 상황을 설정, 대사와 행동/배경을 기울임꼴로 구분
+- https://book.polybuzz.ai/character-profile/advanced-settings/dialogue-style : 페르소나별 말투와 예시 대사
+
+`src/lib/counselors.ts`에서 상담사별 인사·상담실·대사·행동을 관리합니다. `Scene`은 `action`, `speech`, 선택적 `after`로 분리되어 있습니다. 임의 HTML/Markdown 삽입 대신 React 텍스트 노드로 표시합니다.
+
+## 체험과 실험 경계
+
+사진·이름은 모두 가상 인물입니다. 실제 전문가의 자격이나 경력을 주장하지 않습니다. 대화는 미리 작성된 3턴 예시이며 사용자 입력을 분석하지 않습니다. 입력 원문은 React 메모리에만 있고 홈 복귀·완료·새로고침 시 사라집니다.
+
+이전 버전 localStorage `mio_fakedoor_counselor_events_v3`에 최근 최대 1,000개 이벤트만 저장합니다. 이전 동물 캐릭터 버전 기록과 분리합니다. 서버 전송은 없습니다. 노출, 상담사 선택, 체험 시작, 직접 입력/추천 문장, 3턴 완료, 편안함, 비언어적 묘사 영향, 향후 이용 의향, 동일 방문 내 재체험을 구분합니다. 대화 원문과 연락처는 수집하지 않습니다.
+
+이 기록은 실제 AI 대화 품질·치료 효과·D1/D3 재방문을 증명하지 않습니다. 이용 의향과 비언어 묘사 선호를 보는 프런트 프로토타입입니다. 다른 방문자의 기록은 중앙에서 조회할 수 없습니다.
+
+## 생성 이미지
+
+도구: built-in Imagegen. 파일: `public/counselors/portraits.png`. 세 인물의 트립틱을 CSS background-position으로 구분해 사용합니다.
+
+최종 프롬프트:
+
+> Create a photorealistic editorial portrait triptych for a Korean AI psychological counseling chatbot prototype. One single wide image divided into THREE EQUAL vertical panels, each independently croppable at exactly one-third width. Each panel is a waist-up seated portrait, eyes at same level, of a DISTINCT FICTIONAL Korean adult counselor looking gently toward camera in a quiet tastefully furnished counseling room. Left: woman age 35, shoulder-length dark hair, cream knit cardigan, relaxed warm subtle smile, hands softly folded, warm beige bookshelf backdrop. Center: man age 40, short dark hair, navy casual blazer over light shirt, thoughtful kind attentive expression, neutral olive room backdrop. Right: woman age 45, short dark bob, muted sage blouse, composed gentle expression, softly sunlit neutral backdrop. Natural realistic skin texture, understated professional clothing, not fashion glamour, no medical coats. Muted cinematic natural daylight, beautiful photographic quality, premium calm atmosphere. No text, no letters, no logos, no borders between panels. Aspect ratio 3:2 overall. Each portrait occupies own panel, no cross-panel overlap. These are fictional AI personas, not actual professionals.

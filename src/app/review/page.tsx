@@ -1,0 +1,26 @@
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+import { readEvents, clearEvents, summarize, type EventName } from '@/lib/experiment';
+const stages: [EventName, string][] = [['counsel_exposed', 'Fake Door 노출'], ['counselor_profile_click', '상담사 프로필 클릭'], ['conversation_start', '대화 방식 선택 · 시작 의향'], ['first_message_sent', '직접 쓴 첫 메시지'], ['3_turn_reached', '직접 입력 3턴'], ['10_turn_reached', '직접 입력 10턴'], ['conversation_restart', '새 대화에 다시 직접 입력']];
+const rate = (v: number | null) => v === null ? '—' : `${(v * 100).toFixed(1)}%`;
+export default function Review() {
+  const [events, setEvents] = useState<ReturnType<typeof readEvents>>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [includeInternal, setIncludeInternal] = useState(false);
+  const filtered = events.filter(e => includeInternal || e.utm.internal !== '1');
+  const stats = summarize(filtered);
+  function refresh() { setEvents(readEvents()); setLoaded(true); }
+  function download() {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ mode: 'local_scripted_demo', version: 'entry-v4', includeInternal, events: readEvents().filter(e => includeInternal || e.utm.internal !== '1') }, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'mio-entry-v4-local-events.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return <main className="review"><Link href="/">← 체험으로</Link><h1>대화를 시작했는가?</h1><p>9월 23일 실험 리뷰 · v4 · 이 브라우저의 예시 대화 기록</p><p><strong>현재는 미리 작성된 응답입니다.</strong> 아래 수치는 계측 확인용이며 전체 방문자, 실제 AI 대화 효용, PMF를 뜻하지 않습니다. 문장을 보냈다는 사실만으로 자기 이야기를 했다고 판정하지 않습니다.</p><div className="review-actions"><button onClick={refresh}>기록 불러오기 / 새로고침</button><button onClick={download}>JSON 내려받기</button><button onClick={() => setConfirm(true)}>로컬 기록 지우기</button></div><label className="review-filter"><input type="checkbox" checked={includeInternal} onChange={e => setIncludeInternal(e.target.checked)} />팀 테스트 포함 (?internal=1)</label>{confirm && <div className="review-confirm"><p>v4 이벤트와 이 브라우저의 익명 식별자·이전 대화 기준을 지울까요?</p><button onClick={() => { clearEvents(); refresh(); setConfirm(false); }}>지우기</button><button onClick={() => setConfirm(false)}>취소</button></div>}
+    <div className="review-kpis"><article><h2>노출 → 첫 메시지 작성률</h2><strong>{loaded ? rate(stats.firstRate) : '—'}</strong><p>{loaded ? `${stats.writers} / ${stats.exposed}개 브라우저` : '기록을 불러오세요'}</p><small>노출 기록이 있는 익명 브라우저 중 직접 입력한 비율</small></article><article><h2>첫 메시지 → 3턴 도달률</h2><strong>{loaded ? rate(stats.threeRate) : '—'}</strong><p>{loaded ? `${stats.threeConversations} / ${stats.firstConversations}개 대화` : '기록을 불러오세요'}</p><small>같은 대화 ID 안에서 연결된 전환만 집계</small></article></div>
+    <div className="review-table"><table><thead><tr><th>이벤트</th><th>브라우저 수</th><th>대화 수</th><th>발생 수</th></tr></thead><tbody>{stages.map(([id, label]) => { const rows = filtered.filter(e => e.name === id); return <tr key={id}><td>{label}<br /><small>{id}</small></td><td>{loaded ? new Set(rows.map(e => e.visitorId)).size : '—'}</td><td>{loaded ? new Set(rows.map(e => e.conversationId).filter(Boolean)).size : '—'}</td><td>{loaded ? rows.length : '—'}</td></tr>; })}</tbody></table></div>
+    <p>재대화 구분: 같은 방문에서 {filtered.filter(e => e.name === 'conversation_restart' && e.props.kind === 'same_visit').length}회 · 이후 방문에서 {filtered.filter(e => e.name === 'conversation_restart' && e.props.kind === 'later_visit').length}회. 새로고침도 이후 방문으로 분류하므로 D1/D3으로 해석하지 않습니다. JSON의 elapsed_hours로 간격을 확인하세요.</p><p>1턴 = 사용자가 직접 입력해 보낸 비어 있지 않은 메시지 1개. 인사·짧은 응답도 포함됩니다. 대화 방식 선택은 턴과 첫 메시지에서 제외합니다. 원문은 저장하지 않습니다.</p>
+    <section className="review-qualitative"><h2>왜 여기서 이야기했는가?</h2><p>선택 응답과 사용자가 자발적으로 남긴 의견입니다. 실제 대화 원문이나 인터뷰 관찰이 아닙니다.</p>{filtered.some(e => e.name === 'feedback_submitted') ? <ul>{filtered.filter(e => e.name === 'feedback_submitted').map((e, i) => <li key={i}><strong>{e.props.character} · {e.props.turns}턴</strong><br />상황: {e.props.situation || '미응답'}<br />방문 이유: {e.props.reason || '미응답'}<br />대체재: {e.props.alternative || '미응답'}<br />이용 의향: {e.props.intent} · 편안함: {e.props.rating}<br />비언어 표현: {e.props.expression}{e.props.comment && <blockquote>“{e.props.comment}”</blockquote>}</li>)}</ul> : <p>아직 피드백이 없습니다.</p>}</section>
+    <section className="review-decision"><h2>9월 23일 판단 기준</h2><p>CTR 하나로 결론을 내리지 않습니다. 충분한 노출인지 유입 채널·대상 적합성·관찰 기간·표본 수를 먼저 확인하고, 전환과 대체재 대비 이유, 실제 재대화를 함께 봅니다. 현재 예시 데이터로 아래 결론을 자동 판정하지 않습니다.</p><article><h3>🟢 GO · 통합 검토</h3><p>자기 이야기를 꺼내는 사용자가 반복적으로 발견되고 “사람에게는 말하기 부담스러웠지만 여기서는 가능했다”는 이유가 반복됩니다. 일부라도 이후 실제 방문에서 재대화가 발생합니다.</p></article><article><h3>🟡 ITERATE · 막힌 단계 수정</h3><p>프로필 클릭 대비 첫 메시지가 적으면 진입 장벽을, 대화 대비 이용 의향·실제 재대화가 약하면 대화의 가치를 다시 검증합니다.</p></article><article><h3>🔴 KILL / PIVOT · 가설 수정</h3><p>적합한 대상에게 충분히 노출했는데 선택·대화가 약하고 “그냥 궁금했다”, “힘들 때 찾지는 않겠다”, “기존 방법이 낫다”가 반복되면 AI 상담사 가설을 수정합니다.</p></article><p>회의에 가져갈 것: 채널별 노출/첫 입력/3턴의 분자·분모, 강하게 반응한 상황, 대체재 대비 이유, 재방문 간격, 실패 사례와 계측 누락. 작은 표본은 탐색 결과로 남깁니다.</p></section>
+    {loaded && !filtered.length && <p>표시할 v4 기록이 없습니다. 체험을 진행하거나 내부 트래픽 필터·저장소 설정을 확인해주세요.</p>}<details><summary>이벤트 상세</summary><pre>{JSON.stringify(filtered, null, 2)}</pre></details></main>;
+}

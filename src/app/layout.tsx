@@ -1,44 +1,4 @@
-import type { Metadata, Viewport } from "next";
-import "./globals.css";
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-
-export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: {
-    default: "나의 번아웃 유형 테스트 | Mio",
-    template: "%s | Mio",
-  },
-  description:
-    "요즘 나, 왜 이렇게 지쳤지? 1분 만에 알아보는 나의 번아웃 유형 — 미오의 마음 친구들이 결과에 맞는 회복 방법을 알려드려요.",
-  openGraph: {
-    type: "website",
-    siteName: "Mio",
-    title: "나의 번아웃 유형 테스트",
-    description: "요즘 나, 왜 이렇게 지쳤지? 1분 만에 알아보는 나의 번아웃 유형",
-    locale: "ko_KR",
-    // 카카오톡·슬랙 등 공유 썸네일. 결과 페이지는 유형별 이미지로 덮어쓴다.
-    images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Mio — 마음을 행동으로" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    images: ["/og-default.png"],
-  },
-};
-
-export const viewport: Viewport = {
-  themeColor: "#06061a",
-  width: "device-width",
-  initialScale: 1,
-};
-
-export default function RootLayout({ children }: LayoutProps<"/">) {
-  return (
-    <html lang="ko" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
-        <div className="starfield" aria-hidden />
-        {children}
-      </body>
-    </html>
-  );
-}
+import type { Metadata } from 'next';
+import './globals.css';
+export const metadata: Metadata = { title: 'Mio · 마음을 나누는 AI 상담', description: '말하기 어려웠던 마음을 꺼내는 시간. 표정과 몸짓이 담긴 가상의 AI 상담사 대화 체험.' };
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="ko"><body>{children}</body></html>; }
