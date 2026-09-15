@@ -1,47 +1,80 @@
-# Mio · AI 심리상담 챗봇 프런트
+# Mio Fake Door — v5.2
 
-현재 동작 버전은 v4, 디자인은 v3입니다. [실험 설계·이벤트 계약](docs/experiment-v4.md)에 진입 4개 선택, 10턴, 핵심 전환율, 정성 피드백과 판단 기준을 정리했습니다.
+사용자가 필요한 대화를 선택하고, 준비된 대화·정리·지원 정보 화면을 살펴보는 프런트 구현입니다. 현재 인수인계 기준은 **v5.2 + 대화 정책 v1.0**입니다.
 
-v3 디자인: 실사 프로필을 일러스트형 AI 페르소나로 교체하고, 수평 Mio 헤더·보라색 토큰·둥근 카드를 적용했습니다. 자세한 변경과 생성 프롬프트는 [v3 디자인 노트](docs/mio-v3-design.md)를 참고하세요. 아래 레퍼런스·이미지 기록은 v2 작업 이력입니다.
+흰색·라벤더 화면과 보라색 Mio 로고를 사용합니다. 홈 → 이용 안내·동의 → 필요 선택 → 대화 → 선택적 정리·지원 정보·마무리 흐름이며, 직접 종료를 요청한 대화는 피드백·인터뷰 요청 없이 마칠 수 있습니다.
 
-사람 형태의 가상 AI 상담사 프로필 → 상담실 → 행동·표정 묘사가 포함된 대화 → 피드백 흐름입니다. 기존 동물 캐릭터/우주 랜딩을 교체했습니다.
+## 처음 읽을 문서
 
-## 실행
+1. [현재 구현·측정·검증 범위](FAKEDOOR_V52_HANDOFF.md)
+2. [BE·LLM 대화 정책](docs/BACKEND_LLM_CONVERSATION_POLICY.md): 근거와 기획 판단, 말투, 중단·재개, 프롬프트 초안, 상태 계약, 평가 기준
+3. [대화 목업 인수인계](docs/CONVERSATION_MOCK_HANDOFF.md): 8개 상황·32쌍 전체 대사, 의도, 예외, 누적 정리
+
+v5/v5.1 문서는 이전 단계 기록입니다. [v4 README](docs/README-v4-history.md)와 기존 페르소나·실험 문서도 이력으로 남아 있으며, 현재 홈과 대화의 구현 기준은 위 문서입니다.
+
+## 실행과 확인
+
+Node.js와 npm을 준비하고 저장소 루트에서 실행합니다.
 
 ```sh
-cd /Users/jh/Documents/mio/mio_fakedoor
+npm ci
 npm run dev -- --webpack -p 3100
 ```
 
-- http://localhost:3100 : 상담사 탐색 및 대화
-- http://localhost:3100/review : 현재 브라우저 체험 기록 / JSON 다운로드 / 삭제
-- 검증: `npm run build -- --webpack`, `npm run lint`, `npm test`
-- 정적 결과물: `out/`. 백엔드·DB·AI 호출·배포 없음.
+현재 개발 컴퓨터의 `node_modules`는 별도 프로젝트를 가리키는 로컬 심볼릭 링크입니다. 이 링크는 공유 대상이 아니며, 새 체크아웃에서는 위 명령으로 의존성을 설치합니다. 기존 개발 컴퓨터에서 작업을 이어갈 경우 사용 중인 링크를 덮어쓰지 않고 기존 의존성을 사용합니다.
 
-현재 원본 mio_funnel의 node_modules를 심볼릭 링크로 사용합니다. 다른 컴퓨터에서는 링크를 제외하고 `npm ci`로 설치하세요. 원본 프로젝트는 수정하지 않았습니다. 기존 Next.js/React 구조, lockfile, Pretendard, 익명 이벤트 패턴을 재사용했습니다.
+- 사용자 화면: `http://localhost:3100/`
+- 팀 대사 검토: `http://localhost:3100/tone-guide`
+- 내부 검토 메뉴: `http://localhost:3100/?internal=1`
+- 내부 이벤트 검토: `http://localhost:3100/prototype-review?internal=1`
+- 약관·정책: `/legal/terms`, `/legal/personal`, `/legal/sensitive`, `/legal/marketing`, `/legal/privacy`
 
-## 반영한 레퍼런스
+`internal=1`은 표시 모드이며 인증이나 접근 제어가 아닙니다. 외부 배포 시 내부 검토 화면의 공개 범위를 별도로 결정해야 합니다.
 
-사용자 Discord 이미지: 회색 기울임꼴 행동 묘사 + 밝은 대사 + 사람 프로필 아바타 + 보라색 사용자 말풍선.
+```sh
+npm test
+npm run lint
+npx tsc --noEmit
+npm run build -- --webpack
+```
 
-- https://www.polybuzz.ai/ : 인물 프로필을 먼저 탐색하고 대화로 진입하는 구조
-- https://book.polybuzz.ai/character-profile/basic-setting/greeting : 첫 인사로 인물과 상황을 설정, 대사와 행동/배경을 기울임꼴로 구분
-- https://book.polybuzz.ai/character-profile/advanced-settings/dialogue-style : 페르소나별 말투와 예시 대사
+Webpack 빌드는 현재 로컬 의존성 링크 환경에서 검증한 경로입니다. 정적 빌드 결과는 `out/`이며 빌드가 배포를 수행하지 않습니다. 최근 검증은 22개 Vitest 테스트, 변경 파일 ESLint·TypeScript, Webpack 빌드 및 모바일 8개 시나리오 대화 흐름을 포함합니다.
 
-`src/lib/counselors.ts`에서 상담사별 인사·상담실·대사·행동을 관리합니다. `Scene`은 `action`, `speech`, 선택적 `after`로 분리되어 있습니다. 임의 HTML/Markdown 삽입 대신 React 텍스트 노드로 표시합니다.
+## 구현된 부분과 연동할 부분
 
-## 체험과 실험 경계
+| 영역 | 현재 구현 | 후속 작업 |
+|---|---|---|
+| 화면·이동 | 홈, 동의 UI, 필요 선택, 채팅, 정리, 지원 정보, 종료 | 반응형·접근성 검토와 실제 API 상태 연결 |
+| 대화 | 창작 8개 상황·32쌍 + 단일 예시 5쌍, 고정 응답 | 실제 LLM, 서버 정책·평가, 오류·취소·재시도 연동 |
+| 중단·재개 | offer/wait/pause/end와 명시적 재개 | 서버 상태 검증, 지연 응답 무시·중복 방지 |
+| 동의 | 개별 동의·전체 동의, 선택 마케팅 분리 | 버전·시각 등 동의 증적 저장, 철회·삭제와 실제 데이터 처리 연결 |
+| 정리 | 선택한 예시에 기반한 누적 정리, 수정·다운로드 | 실제 입력 정리 및 출처·정확성 검증 |
+| 계측 | 브라우저 로컬 이벤트, 원문 제외 | 합의한 이벤트의 서버 수집과 지표 정의 |
+| 인터뷰 관심 | 관심 선택과 사용자가 여는 이메일 문의 링크 | 중앙 접수를 원하면 실제 접수·완료 확인 구현 |
 
-사진·이름은 모두 가상 인물입니다. 실제 전문가의 자격이나 경력을 주장하지 않습니다. 대화는 미리 작성된 3턴 예시이며 사용자 입력을 분석하지 않습니다. 입력 원문은 React 메모리에만 있고 홈 복귀·완료·새로고침 시 사라집니다.
+현재 임의 입력을 이해하는 LLM, 서버 API·DB 저장, 실제 동의 증적, 중앙 모집·계측은 연결되어 있지 않습니다. 준비된 답변이라는 안내를 유지합니다. 대화의 자연스러움·효능·위기 대응이 이 목업으로 검증됐다고 해석하지 않습니다.
 
-이전 버전 localStorage `mio_fakedoor_counselor_events_v3`에 최근 최대 1,000개 이벤트만 저장합니다. 이전 동물 캐릭터 버전 기록과 분리합니다. 서버 전송은 없습니다. 노출, 상담사 선택, 체험 시작, 직접 입력/추천 문장, 3턴 완료, 편안함, 비언어적 묘사 영향, 향후 이용 의향, 동일 방문 내 재체험을 구분합니다. 대화 원문과 연락처는 수집하지 않습니다.
+## 담당별 인수인계
 
-이 기록은 실제 AI 대화 품질·치료 효과·D1/D3 재방문을 증명하지 않습니다. 이용 의향과 비언어 묘사 선호를 보는 프런트 프로토타입입니다. 다른 방문자의 기록은 중앙에서 조회할 수 없습니다.
+- **김종혁·기획:** UIUX·문구·목업 대사와 기대 동작, 요청된 간단한 로컬 CRUD·예외 처리 보완
+- **FE 담당:** 백엔드 API 연동, 스트리밍 표시·취소·재시도, 지연 응답 처리, 반응형·접근성·성능 최적화
+- **효찬·BE/LLM:** 서버 API·데이터 처리·동의 저장, 대화 정책과 프롬프트, 실제 모델 연동·평가, 안전 대응
 
-## 생성 이미지
+실제 연동 전에는 요청/응답·중단/재개·동의 오류·이벤트 필드를 FE/BE가 함께 확정합니다. 문서의 API 형식은 계약 제안이며 구현된 엔드포인트가 아닙니다.
 
-도구: built-in Imagegen. 파일: `public/counselors/portraits.png`. 세 인물의 트립틱을 CSS background-position으로 구분해 사용합니다.
+## 주요 수정 위치
 
-최종 프롬프트:
+- `src/app/page.tsx`, `src/app/prototype.css`: 현재 화면과 흐름
+- `src/components/mock-chat-composer.tsx`: 목업 전송·응답 표시·재시도·중단 UI
+- `src/lib/conversation-scenarios.json`: 연속 대화와 단계별 정리·후속 동작
+- `src/lib/chat-mock.ts`: 단일 예시 및 미지원 입력 응답
+- `src/lib/mock-dialogue-policy.ts`: 정확한 예시 식별에 기반한 화면 정책
+- `src/lib/need-events.ts`: 로컬 이벤트 스키마
 
-> Create a photorealistic editorial portrait triptych for a Korean AI psychological counseling chatbot prototype. One single wide image divided into THREE EQUAL vertical panels, each independently croppable at exactly one-third width. Each panel is a waist-up seated portrait, eyes at same level, of a DISTINCT FICTIONAL Korean adult counselor looking gently toward camera in a quiet tastefully furnished counseling room. Left: woman age 35, shoulder-length dark hair, cream knit cardigan, relaxed warm subtle smile, hands softly folded, warm beige bookshelf backdrop. Center: man age 40, short dark hair, navy casual blazer over light shirt, thoughtful kind attentive expression, neutral olive room backdrop. Right: woman age 45, short dark bob, muted sage blouse, composed gentle expression, softly sunlit neutral backdrop. Natural realistic skin texture, understated professional clothing, not fashion glamour, no medical coats. Muted cinematic natural daylight, beautiful photographic quality, premium calm atmosphere. No text, no letters, no logos, no borders between panels. Aspect ratio 3:2 overall. Each portrait occupies own panel, no cross-panel overlap. These are fictional AI personas, not actual professionals.
+대사 JSON을 바꾼 뒤 전체 대사 부록은 다음 명령으로 갱신합니다.
+
+```sh
+python3 scripts/render-conversation-handoff.py
+```
+
+연구 원문·합성 결과는 이번 프런트 작업으로 수정하지 않았습니다. 근거와 제품 가설의 구분은 대화 정책 문서에서 확인할 수 있습니다.
