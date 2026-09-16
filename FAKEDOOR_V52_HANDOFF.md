@@ -1,3 +1,7 @@
+# 관리자 대시보드 후속 변경
+
+현재 접근 방식과 배포는 [ADMIN_SECURITY.md](docs/ADMIN_SECURITY.md), 지표 해석과 후속 작업은 [DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md)가 우선합니다. 아래는 v5.2 원래 구현 기록이며 정적 빌드·비인증 설명은 후속 변경으로 대체되었습니다. 제품 데이터는 여전히 로컬이며 새 서버 기능은 관리자 인증입니다.
+
 # Mio Fake Door v5.2 — need-led preview
 
 Current local implementation. No deployment, LLM integration, signup, marketing dispatch or server event transport.
