@@ -663,7 +663,26 @@
 .nf-scenario-library p { font-size:14px; line-height:1.85; margin:12px 0; }
 .nf-scenario-library blockquote { margin:14px 0; padding:18px; background:#f5f0fb; border-radius:12px; line-height:1.85; }
 .nf-scenario-library .nf-scenario-avoid { color:#8b4c60; }
-.nf-conversation-rest { padding:17px; margin:12px 0; border:1px solid #e0d6ed; border-radius:14px; background:#f8f5fc; }
+.nf-ai-notice { margin-top:4px; font-size:12px; color:#71697d; }
+.nf-demo-fallback { margin:0 18px 8px; padding:12px 14px; border-radius:12px; background:#f7f3fb; color:#5c5168; font-size:13px; line-height:1.7; }
+.nf-crisis { margin:16px 0; padding:16px; border:1px solid #ead6df; border-radius:14px; background:#fdf7f8; }
+.nf-crisis p { margin:0 0 10px; color:#5a3a46; font-size:14px; line-height:1.75; }
+.nf-crisis-emergency, .nf-crisis-resources { list-style:none; padding:0; margin:0 0 10px; }
+.nf-crisis li { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:baseline; margin:6px 0; font-size:13px; color:#504060; }
+.nf-crisis-review { margin-top:12px; }
+.nf-crisis-review a { margin-left:8px; color:#6047a2; }
 .nf-conversation-rest p { font-size:14px; color:#594a6b; margin-bottom:12px; }
 .nf-conversation-rest > div { display:flex; flex-wrap:wrap; gap:10px; }
 .nf-app .nf-conversation-rest button { padding:10px 14px; min-height:44px; border:1px solid #d7cae7; border-radius:10px; color:#6047a2; background:#fff; font-size:13px; }
+.nf-consent-error { margin:14px 0 0; color:#9b3b4f; font-size:13px; line-height:1.7; }
+.nf-retention { margin:16px 0; padding:16px; border:1px solid #e5deed; border-radius:14px; background:#f7f3fb; color:#5c5168; font-size:13px; line-height:1.75; }
+.nf-retention p { color:#403052; font-weight:600; margin-bottom:8px; }
+.nf-retention li { margin:6px 0; }
+.nf-withdraw { margin:28px 0 0; padding:22px; border:1px solid #e5deed; border-radius:18px; background:#fff; text-align:left; }
+.nf-withdraw h2 { font-size:18px; color:#403052; margin-bottom:8px; }
+.nf-withdraw > p { color:#71697d; font-size:13px; line-height:1.7; }
+.nf-withdraw-codes { display:grid; gap:8px; margin:16px 0; }
+.nf-withdraw-codes label { display:flex; gap:10px; align-items:center; color:#504060; font-size:14px; }
+.nf-withdraw-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.nf-withdraw-status { margin-top:16px; padding:14px; border-radius:12px; background:#f7f3fb; color:#5c5168; font-size:13px; line-height:1.7; }
+.nf-withdraw-status p { margin:4px 0; }
