@@ -12,6 +12,8 @@ export type ApiRequestOptions = ApiHeaderOptions & {
   body?: unknown;
   signal?: AbortSignal;
   keepalive?: boolean;
+  cache?: RequestCache;
+  credentials?: RequestCredentials;
 };
 
 function omitServerOwnedRequestFields(value: unknown): unknown {
@@ -118,7 +120,8 @@ export async function apiRequest<T>(options: ApiRequestOptions): Promise<ApiSucc
   const init: RequestInit = {
     method: options.method,
     headers,
-    credentials: 'include', // 쿠키 자동 전송
+    credentials: options.credentials ?? 'include', // 쿠키 자동 전송
+    cache: options.cache,
     signal: options.signal,
     keepalive: options.keepalive,
   };
@@ -150,7 +153,8 @@ export async function apiRequestStream(options: ApiRequestOptions): Promise<Resp
   const init: RequestInit = {
     method: options.method,
     headers,
-    credentials: 'include',
+    credentials: options.credentials ?? 'include',
+    cache: options.cache,
     signal: options.signal,
   };
   if (options.body !== undefined) {
