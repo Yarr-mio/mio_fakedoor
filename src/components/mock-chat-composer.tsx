@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { scenarioById, nextScenarioTurn, completedScenarioTurns } from '@/lib/conversation-scenarios';
 import { mockReplyFor, TONE_EXAMPLES } from '@/lib/chat-mock';
 import type { DemoMessage, Need } from '@/lib/need-flow';
-import { trackNeed } from '@/lib/need-events';
+import { setEventSurface, trackNeed } from '@/lib/need-events';
 import { useInternalMode } from '@/lib/use-internal-mode';
 import type { MockFollowUp } from '@/lib/mock-dialogue-policy';
 import { Icon } from './need-ui';
@@ -26,6 +26,7 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
   const textarea = useRef<HTMLTextAreaElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const [trayOpen, setTrayOpen] = useState(false);
+  const lastTurn = useRef(0);
   const busy = status === 'waiting' || status === 'streaming';
   const offerNext = followUp === 'offer';
   const startersVisible = !hasUserMessage && !scenario;
@@ -41,6 +42,9 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
     }, 0);
   }
 
+  useEffect(() => {
+    setEventSurface('scripted_demo');
+  }, []);
   useEffect(() => () => {
     generation.current++;
     if (task.current) clearTimeout(task.current);
@@ -52,11 +56,12 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
     pending.current = true;
     const id = ++generation.current;
     lastReply.current = reply; lastFixtureId.current = fixtureId;
+    const turn = lastTurn.current;
     setStatus('waiting'); onPreview('');
-    trackNeed('mock_response_started', { need });
+    trackNeed('mock_response_started', { need, turn });
     task.current = setTimeout(() => {
       if (id !== generation.current) return;
-      if (fail) { pending.current = false; setStatus('error'); trackNeed('mock_response_failed'); return; }
+      if (fail) { pending.current = false; setStatus('error'); trackNeed('mock_response_failed', { turn }); return; }
       setStatus('streaming');
       let end = 0;
       const tick = () => {
@@ -64,7 +69,7 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
         end = Math.min(reply.length, end + 6);
         onPreview(reply.slice(0, end));
         if (end < reply.length) task.current = setTimeout(tick, 65);
-        else { pending.current = false; setStatus('idle'); onPreview(''); onMessage({ role: 'mio', text: reply, source: 'mock', ...(fixtureId ? { fixtureId } : {}) }); trackNeed('mock_response_completed'); }
+        else { pending.current = false; setStatus('idle'); onPreview(''); onMessage({ role: 'mio', text: reply, source: 'mock', ...(fixtureId ? { fixtureId } : {}) }); trackNeed('mock_response_completed', { turn }); }
       };
       tick();
     }, 850);
@@ -75,8 +80,10 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
     const scenarioTurn = nextTurn?.user === text ? nextTurn : undefined;
     const fixture = scenarioTurn ?? TONE_EXAMPLES.find(example => example.user === text);
     const alreadySent = scenarioTurn && messages.some(message => message.role === 'user' && message.fixtureId === scenarioTurn.id);
+    const userTurns = messages.filter(message => message.role === 'user').length;
+    if (!alreadySent) lastTurn.current = userTurns + 1;
     if (!alreadySent) onMessage({ role: 'user', text, source: fixture ? 'fixture' : 'typed', ...(scenarioTurn ? { fixtureId:scenarioTurn.id } : {}) });
-    if (!alreadySent) trackNeed(fixture ? 'mock_fixture_sent' : 'mock_input_sent', { need, ...(scenarioTurn ? { resource:scenarioTurn.id } : {}) });
+    if (!alreadySent) trackNeed(fixture ? 'mock_fixture_sent' : 'mock_input_sent', { need, turn: lastTurn.current, ...(scenarioTurn ? { resource:scenarioTurn.id } : {}) });
     setDraft('');
     setTrayOpen(false);
     textarea.current?.blur();
@@ -84,7 +91,7 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
   }
   function stop() {
     generation.current++; if (task.current) clearTimeout(task.current);
-    pending.current = false; onPreview(''); setStatus('stopped'); trackNeed('mock_response_stopped');
+    pending.current = false; onPreview(''); setStatus('stopped'); trackNeed('mock_response_stopped', { turn: lastTurn.current });
   }
   const starters = need === 'perspective' ? [TONE_EXAMPLES[2], TONE_EXAMPLES[1], TONE_EXAMPLES[0]] : [TONE_EXAMPLES[0], TONE_EXAMPLES[1], TONE_EXAMPLES[2]];
   return <div className="nf-mock-composer" ref={dock}>
@@ -96,7 +103,7 @@ export function MockChatComposer({ need, hasUserMessage, scenarioId, messages, f
       </div>
     )}
     <div className="nf-mock-status" role="status">{status === 'waiting' ? '답변을 준비하고 있어요…' : status === 'streaming' ? '답변을 이어 쓰고 있어요…' : status === 'stopped' ? '응답 표시를 멈췄어요. 다시 보거나 다른 방향으로 이동할 수 있어요.' : status === 'error' ? '응답 실패 화면 예시예요. 실제 서버 장애가 아닙니다.' : ''}</div>
-    {(status === 'error' || status === 'stopped') && <button className="nf-mock-retry" onClick={() => { trackNeed('mock_response_retried'); play(lastReply.current, false, lastFixtureId.current); }}>답변 다시 보기 <Icon name="arrow" size={15} /></button>}
+    {(status === 'error' || status === 'stopped') && <button className="nf-mock-retry" onClick={() => { trackNeed('mock_response_retried', { turn: lastTurn.current }); play(lastReply.current, false, lastFixtureId.current); }}>답변 다시 보기 <Icon name="arrow" size={15} /></button>}
     {!offerNext && <div className="nf-conversation-rest">
       <p>{followUp === 'pause' ? '질문을 멈췄어요.' : followUp === 'end' ? '더 답하지 않고 마칠 수 있어요.' : '더 말하지 않아도 돼요.'}</p>
       <div>{followUp !== 'end' && <button disabled={busy} onClick={onResume}>내가 더 이야기할게요</button>}<button onClick={onEnd}>여기서 마치기</button></div>
