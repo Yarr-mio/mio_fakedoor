@@ -9,7 +9,11 @@ import {
   type NeedCode,
   type ServerMode,
 } from "@/lib/api";
-import { getConsentStatus, type DeletionRecord } from "@/lib/api/consent";
+import {
+  consentStatusPollDelayMs,
+  getConsentStatus,
+  type DeletionRecord,
+} from "@/lib/api/consent";
 import {
   consumeConversationStream,
   controlConversation,
@@ -44,6 +48,7 @@ export type ChatLine = {
   content: string;
   status: "complete" | "stopped" | "failed" | "streaming";
   fixtureId?: string;
+  crisisFixed?: boolean;
 };
 
 export type DemoFallbackReason =
@@ -83,7 +88,7 @@ function historyToLine(message: HistoryMessage): ChatLine {
 
 export function useConversationApi() {
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [mode, setMode] = useState<ServerMode | null>(null);
+  const [mode, setModeState] = useState<ServerMode | null>(null);
   const [state, setState] = useState<ConversationState>("offer");
   const [stateVersion, setStateVersion] = useState(1);
   const [limits, setLimits] = useState({
@@ -99,6 +104,9 @@ export function useConversationApi() {
   const [retryable, setRetryable] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [deletion, setDeletion] = useState<DeletionRecord | null>(null);
+  const [deletionOperationId, setDeletionOperationId] = useState<string | null>(
+    null,
+  );
   const [summary, setSummary] = useState<ConversationSummaryData | null>(null);
   const [summaryBusy, setSummaryBusy] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -120,6 +128,13 @@ export function useConversationApi() {
   const attemptRef = useRef<TurnAttempt | null>(null);
   const streamingRef = useRef(false);
   const blockedRef = useRef(false);
+  const modeRef = useRef<ServerMode | null>(null);
+  const crisisFixedRef = useRef(false);
+
+  const assignMode = useCallback((next: ServerMode | null) => {
+    modeRef.current = next;
+    setModeState(next);
+  }, []);
 
   const applyState = useCallback((next: ConversationState, version: number) => {
     if (version < stateVersionRef.current) return;
@@ -166,7 +181,7 @@ export function useConversationApi() {
       conversationIdRef.current = id;
       setConversationId(id);
       applyState(listed.state, listed.stateVersion);
-      setMode(listed.mode);
+      assignMode(listed.mode);
       setEventSurface(listed.mode);
       setMessages(listed.messages.map(historyToLine));
       setSuggestions([]);
@@ -175,7 +190,7 @@ export function useConversationApi() {
         setBlocked(true);
       }
     },
-    [applyState],
+    [applyState, assignMode],
   );
 
   const restoreFromServer = useCallback(
@@ -231,16 +246,9 @@ export function useConversationApi() {
     blockedRef.current = false;
     setDeleted(false);
     setDeletion(null);
+    setDeletionOperationId(null);
     setSuggestions([]);
-    const previous = conversationIdRef.current;
-    if (previous) {
-      abortRef.current?.abort();
-      try {
-        await endConversation(previous, "quiet");
-      } catch {
-        /* 이전 대화 종료 실패 무시 */
-      }
-    }
+    crisisFixedRef.current = false;
     try {
       const result = await createConversation(input);
       const data = result.data;
@@ -248,7 +256,7 @@ export function useConversationApi() {
       hydrateConversationId = data.conversationId;
       hydratePromise = null;
       setConversationId(data.conversationId);
-      setMode(data.mode);
+      assignMode(data.mode);
       setEventSurface(data.mode);
       applyState(data.state, data.stateVersion);
       setLimits(data.limits);
@@ -322,7 +330,7 @@ export function useConversationApi() {
       upsert({
         messageId: meta.outMessageId,
         role: "mio",
-        source: "model",
+        source: modeRef.current === "live" ? "model" : "fixture",
         content: "",
         status: "streaming",
       });
@@ -342,17 +350,30 @@ export function useConversationApi() {
       // 서버 flow 값만 사용
       const next = parseCrisisEvent(block.data);
       setCrisis(next);
-      if (next.flow === "end" && next.fixedResponse) {
+      if (next.flow === "end") {
+        crisisFixedRef.current = true;
         const target = outMessageIdRef.current;
         if (target) {
-          replaceContent(target, next.fixedResponse);
-        } else {
+          setMessages((current) =>
+            current.map((item) =>
+              item.messageId === target
+                ? {
+                    ...item,
+                    content: next.fixedResponse ?? item.content,
+                    status: "streaming",
+                    crisisFixed: true,
+                  }
+                : item,
+            ),
+          );
+        } else if (next.fixedResponse) {
           upsert({
             messageId: `crisis-${Date.now()}`,
             role: "mio",
             source: "fixture",
             content: next.fixedResponse,
             status: "complete",
+            crisisFixed: true,
           });
         }
       }
@@ -365,18 +386,22 @@ export function useConversationApi() {
         judgeStatus: done.judgeStatus,
       };
       applyState(done.state, done.stateVersion);
-      setMode(done.mode);
+      assignMode(done.mode);
       setEventSurface(done.mode);
       setSuggestions(done.interaction.suggestions);
-      // error만 오류 화면
       const streamError = done.finishedReason === "error";
+      const crisisFixed = crisisFixedRef.current;
+      crisisFixedRef.current = false;
+      const assistantSource =
+        done.mode === "scripted_demo" ? "fixture" : "model";
       setMessages((current) =>
         current.map((item) =>
           item.messageId === done.msgId
             ? {
                 ...item,
                 status: streamError ? "failed" : "complete",
-                source: item.source === "fixture" ? "fixture" : "model",
+                source: assistantSource,
+                crisisFixed: crisisFixed || item.crisisFixed,
               }
             : item,
         ),
@@ -395,10 +420,7 @@ export function useConversationApi() {
     content: string;
     source: "typed" | "fixture";
     fixtureId?: string;
-  }): Promise<{
-    ok: boolean;
-    fallback?: DemoFallbackReason;
-  }> {
+  }): Promise<{ ok: boolean }> {
     const id = conversationIdRef.current;
     if (
       !id ||
@@ -408,6 +430,7 @@ export function useConversationApi() {
       streamingRef.current
     )
       return { ok: false };
+    crisisFixedRef.current = false;
     const content = input.content.trim();
     const maxChars = limits.maxContentChars;
     if (content.length < 1 || content.length > maxChars) {
@@ -473,14 +496,10 @@ export function useConversationApi() {
           item.messageId === localId ? { ...item, status: "failed" } : item,
         ),
       );
-      if (isLiveFallbackError(cause) && isApiError(cause)) {
-        const fallback =
-          cause.code === "LIVE_BUDGET_EXHAUSTED"
-            ? "live_budget_exhausted"
-            : "live_mode_disabled";
-        setRetryable(false);
-        setError(conversationErrorMessage(cause));
-        return { ok: false, fallback };
+      if (isLiveFallbackError(cause)) {
+        setRetryable(true);
+        setError("실시간 응답이 잠시 제한되었어요");
+        return { ok: false };
       }
       if (isApiError(cause) && cause.code === "CONFLICT") {
         try {
@@ -580,6 +599,16 @@ export function useConversationApi() {
     }
   }
 
+  function syncEndedLocally(): void {
+    abortRef.current?.abort();
+    streamingRef.current = false;
+    setStreaming(false);
+    applyState("end", stateVersionRef.current);
+    blockedRef.current = true;
+    setBlocked(true);
+    setSuggestions([]);
+  }
+
   async function finishConversation(
     reason: "user_end" | "quiet",
   ): Promise<boolean> {
@@ -614,12 +643,7 @@ export function useConversationApi() {
       blockedRef.current = true;
       setBlocked(true);
       setSuggestions([]);
-      const status = await getConsentStatus(result.data.operationId);
-      setDeletion(
-        status.data.deletions.find(
-          (item) => item.operationId === result.data.operationId,
-        ) ?? null,
-      );
+      setDeletionOperationId(result.data.operationId);
     } catch (cause) {
       setError(conversationErrorMessage(cause));
     }
@@ -636,7 +660,6 @@ export function useConversationApi() {
   async function loadSummary(): Promise<{
     ok: boolean;
     data: ConversationSummaryData | null;
-    fallback?: DemoFallbackReason;
   }> {
     const id = conversationIdRef.current;
     if (!id) return { ok: false, data: null };
@@ -656,13 +679,9 @@ export function useConversationApi() {
         blockedRef.current = true;
         setBlocked(true);
       }
-      if (
-        isLiveFallbackError(cause) &&
-        isApiError(cause) &&
-        cause.code === "LIVE_BUDGET_EXHAUSTED"
-      ) {
-        setSummaryError(summaryErrorMessage(cause));
-        return { ok: false, data: null, fallback: "live_budget_exhausted" };
+      if (isLiveFallbackError(cause)) {
+        setSummaryError("실시간 응답이 잠시 제한되었어요");
+        return { ok: false, data: null };
       }
       setSummaryError(summaryErrorMessage(cause));
       return { ok: false, data: null };
@@ -673,7 +692,6 @@ export function useConversationApi() {
 
   async function generateSummary(): Promise<{
     ok: boolean;
-    fallback?: DemoFallbackReason;
     data?: ConversationSummaryData;
   }> {
     const id = conversationIdRef.current;
@@ -689,13 +707,9 @@ export function useConversationApi() {
       setSummary(result.data);
       return { ok: true, data: result.data };
     } catch (cause) {
-      if (
-        isLiveFallbackError(cause) &&
-        isApiError(cause) &&
-        cause.code === "LIVE_BUDGET_EXHAUSTED"
-      ) {
-        setSummaryError(summaryErrorMessage(cause));
-        return { ok: false, fallback: "live_budget_exhausted" };
+      if (isLiveFallbackError(cause)) {
+        setSummaryError("실시간 응답이 잠시 제한되었어요");
+        return { ok: false };
       }
       if (isApiError(cause) && cause.code === "GONE") {
         applyState("end", stateVersionRef.current);
@@ -711,11 +725,10 @@ export function useConversationApi() {
 
   async function openOrCreateSummary(): Promise<{
     ok: boolean;
-    fallback?: DemoFallbackReason;
     data?: ConversationSummaryData;
   }> {
     const loaded = await loadSummary();
-    if (!loaded.ok) return { ok: false, fallback: loaded.fallback };
+    if (!loaded.ok) return { ok: false };
     if (loaded.data) return { ok: true, data: loaded.data };
     return generateSummary();
   }
@@ -737,9 +750,9 @@ export function useConversationApi() {
     stateVersionRef.current = 1;
     hydrateConversationId = null;
     hydratePromise = null;
+    crisisFixedRef.current = false;
     debugRef.current = { finishedReason: null, judgeStatus: null };
     setConversationId(null);
-    setMode(null);
     setState("offer");
     setStateVersion(1);
     setMessages([]);
@@ -751,6 +764,7 @@ export function useConversationApi() {
     setRetryable(false);
     setDeleted(false);
     setDeletion(null);
+    setDeletionOperationId(null);
     setSummary(null);
     setSummaryBusy(false);
     setSummaryError(null);
@@ -758,9 +772,46 @@ export function useConversationApi() {
   }
 
   useEffect(() => {
+    const operationId = deletionOperationId;
+    if (!operationId) return;
+    let cancelled = false;
+    let timer = 0;
+    const tick = async () => {
+      try {
+        const result = await getConsentStatus(operationId);
+        if (cancelled) return;
+        const record =
+          result.data.deletions.find(
+            (item) => item.operationId === operationId,
+          ) ?? null;
+        setDeletion(record);
+        const nextStatus = record?.status ?? "pending";
+        if (nextStatus === "succeeded" || nextStatus === "failed") return;
+        timer = window.setTimeout(
+          () => {
+            void tick();
+          },
+          consentStatusPollDelayMs(result.retryAfterSeconds, nextStatus),
+        );
+      } catch (cause) {
+        if (cancelled) return;
+        setError(conversationErrorMessage(cause));
+      }
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [deletionOperationId]);
+
+  useEffect(() => {
     let cancelled = false;
     void bootstrapVisit().then(async (visit) => {
-      if (cancelled || !visit?.activeConversationId) return;
+      if (cancelled || !visit) return;
+      assignMode(visit.mode);
+      setEventSurface(visit.mode);
+      if (!visit.activeConversationId) return;
       await restoreFromServer(visit.activeConversationId, {
         asSessionResume: true,
       });
@@ -769,7 +820,7 @@ export function useConversationApi() {
       cancelled = true;
       void stopActiveTurn(false);
     };
-  }, [restoreFromServer, stopActiveTurn]);
+  }, [restoreFromServer, stopActiveTurn, assignMode]);
 
   return {
     conversationId,
@@ -799,6 +850,7 @@ export function useConversationApi() {
     cancelActiveStream,
     restoreFromServer,
     resetConversation,
+    syncEndedLocally,
     retryLast,
     loadSummary,
     generateSummary,
