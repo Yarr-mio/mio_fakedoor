@@ -1,4 +1,5 @@
 import { apiRequest, apiRequestStream } from "./client";
+import { DELETION_STATUSES, type DeletionStatus } from "./consent";
 import { ApiError, ApiTransportError, isApiError } from "./errors";
 import { SSE_ACCEPT } from "./headers";
 import { readSseStream, type SseBlock } from "./sse";
@@ -114,7 +115,7 @@ export type ControlConversationData = {
 
 export type DeleteConversationData = {
   operationId: string;
-  status: "pending";
+  status: DeletionStatus;
   dbDeadline: string;
   backupDeadline: string;
 };
@@ -336,12 +337,21 @@ function parseControlData(value: unknown): ControlConversationData {
   };
 }
 
+function parseDeletionStatus(value: unknown): DeletionStatus {
+  if (
+    typeof value === "string" &&
+    (DELETION_STATUSES as readonly string[]).includes(value)
+  ) {
+    return value as DeletionStatus;
+  }
+  return parseFailure("status");
+}
+
 function parseDeleteData(value: unknown): DeleteConversationData {
-  if (!isJsonRecord(value) || value.status !== "pending")
-    return parseFailure("data");
+  if (!isJsonRecord(value)) return parseFailure("data");
   return {
     operationId: parseString(value.operationId, "operationId"),
-    status: "pending",
+    status: parseDeletionStatus(value.status),
     dbDeadline: parseString(value.dbDeadline, "dbDeadline"),
     backupDeadline: parseString(value.backupDeadline, "backupDeadline"),
   };

@@ -329,6 +329,29 @@ describe("conversation rest endpoints", () => {
     expect(result.data.status).toBe("pending");
   });
 
+  it("accepts a completed deletion status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            success: true,
+            data: {
+              operationId: "op_9c1d",
+              status: "succeeded",
+              dbDeadline: "2026-09-29",
+              backupDeadline: "2026-10-22",
+            },
+            meta: { traceId: "01HVZXYB" },
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+    const result = await deleteConversation("c1");
+    expect(result.data.status).toBe("succeeded");
+  });
+
   it("maps json errors before the stream opens", async () => {
     vi.stubGlobal(
       "fetch",
