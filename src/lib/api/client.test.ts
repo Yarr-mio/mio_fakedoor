@@ -40,11 +40,11 @@ afterEach(() => {
 });
 
 describe('api headers', () => {
-  it('sets json content type origin and optional idempotency key', () => {
+  it('sets json content type and optional idempotency key without a script origin', () => {
     const key = createIdempotencyKey();
     const headers = buildApiHeaders({ idempotencyKey: key });
     expect(headers.get('Content-Type')).toBe('application/json');
-    expect(headers.get('Origin')).toBe('https://app.example.test');
+    expect(headers.get('Origin')).toBeNull();
     expect(headers.get('Idempotency-Key')).toBe(key);
     expect(headers.get('X-Device-Id')).toBeNull();
     expect(headers.get('X-App-Version')).toBeNull();
@@ -69,7 +69,7 @@ describe('api request envelope', () => {
     expect(init.method).toBe('GET');
     const headers = new Headers(init.headers);
     expect(headers.get('Content-Type')).toBe('application/json');
-    expect(headers.get('Origin')).toBe('https://app.example.test');
+    expect(headers.get('Origin')).toBeNull();
     expect(headers.has('Idempotency-Key')).toBe(false);
   });
 

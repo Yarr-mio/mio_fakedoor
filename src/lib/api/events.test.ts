@@ -159,7 +159,7 @@ describe("post events", () => {
     expect(init.keepalive).toBe(true);
     const headers = new Headers(init.headers);
     expect(headers.get("Content-Type")).toBe("application/json");
-    expect(headers.get("Origin")).toBe("https://app.example.test");
+    expect(headers.get("Origin")).toBeNull();
     expect(JSON.parse(String(init.body))).toEqual({ events: [event] });
   });
 

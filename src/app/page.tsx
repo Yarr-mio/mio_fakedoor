@@ -36,6 +36,7 @@ import {
   endsConversationOnWithdraw,
   type ConsentDocumentCode,
   type NeedCode,
+  type ServerMode,
 } from "@/lib/api";
 import type { CrisisEvent } from "@/lib/api/conversations";
 import { useConsentApi } from "@/lib/use-consent-api";
@@ -43,6 +44,7 @@ import {
   useConversationApi,
   type DemoFallbackReason,
 } from "@/lib/use-conversation-api";
+import { liveOpeningExamples } from "@/lib/live-opening-examples";
 import "./prototype.css";
 
 export default function Home() {
@@ -194,22 +196,32 @@ export default function Home() {
     setConsent({ ...EMPTY_CONSENT });
     setScreen("intro");
   }
-  async function enterChat(value: Need, nextScenarioId?: string) {
-    if (!nextScenarioId) trackNeed("need_selected", { need: value });
+  async function enterChat(
+    value: Need,
+    nextScenarioId?: string,
+  ): Promise<ServerMode | null> {
+    const scriptedScenario =
+      conversation.mode === "live" ? undefined : nextScenarioId;
+    if (!scriptedScenario) trackNeed("need_selected", { need: value });
     if (value === "support") {
       openSupport("needs");
-      return;
+      return null;
     }
     setNeed(value);
-    if (nextScenarioId) setScenarioId(nextScenarioId);
+    if (scriptedScenario) setScenarioId(scriptedScenario);
+    else if (conversation.mode === "live") setScenarioId(null);
     const result = await conversation.start({
       need: value as NeedCode,
-      ...(nextScenarioId ? { scenarioId: nextScenarioId } : {}),
+      ...(scriptedScenario ? { scenarioId: scriptedScenario } : {}),
     });
     if (result.ok) {
+      if (result.mode === "live") {
+        setScenarioId(null);
+        scenarioDialog.current?.close();
+      }
       setScreen("chat");
       trackNeed("demo_started", { need: value });
-      return;
+      return result.mode;
     }
     if (result.fallback === "config") {
       setDemoFallback(result.fallback);
@@ -217,13 +229,14 @@ export default function Home() {
       setEventSurface("scripted_demo");
       setScreen("chat");
       trackNeed("demo_started", { need: value });
-      return;
+      return "scripted_demo";
     }
     if (result.fallback) {
       setToast("실시간 응답이 잠시 제한되었어요");
-      return;
+      return null;
     }
     setToast(result.error);
+    return null;
   }
   function selectNeed(value: Need) {
     void enterChat(value);
@@ -246,6 +259,7 @@ export default function Home() {
     }
   }
   async function selectScenario(id: string) {
+    if (conversation.mode === "live") return;
     const scenario = scenarioById(id);
     if (!scenario) return;
     const ended = await leaveConversationQuietly();
@@ -253,8 +267,8 @@ export default function Home() {
     setScenarioRun((previous) => previous + 1);
     resetContent();
     setScenarioId(id);
-    void enterChat(scenario.need, id);
-    trackNeed("scenario_selected", { resource: id });
+    const started = await enterChat(scenario.need, id);
+    if (started !== "live") trackNeed("scenario_selected", { resource: id });
   }
   function appendMockMessage(message: DemoMessage) {
     setMessages((previous) => [...previous, message]);
@@ -402,7 +416,7 @@ export default function Home() {
               <button onClick={() => dialog.current?.showModal()}>
                 방향 바꾸기
               </button>
-              {conversation.mode !== "live" ? (
+              {conversation.mode === "scripted_demo" ? (
                 <button
                   onClick={() => scenarioDialog.current?.showModal()}
                   aria-haspopup="dialog"
@@ -743,11 +757,18 @@ export default function Home() {
               <div className="nf-chat-controls">
                 {usingApi ? (
                   <ConversationComposer
+                    mode={conversation.mode}
                     state={conversation.state}
                     streaming={conversation.streaming}
                     blocked={conversation.blocked || conversation.deleted}
                     maxContentChars={conversation.limits.maxContentChars}
                     suggestions={conversation.suggestions}
+                    openingExamples={
+                      conversation.mode === "live" &&
+                      conversation.openingExamplesOpen
+                        ? liveOpeningExamples(need)
+                        : []
+                    }
                     error={conversation.error}
                     retryable={conversation.retryable}
                     onSend={(input) => {
@@ -771,7 +792,7 @@ export default function Home() {
                           <Icon name="compass" size={16} />
                           방향 바꾸기
                         </button>
-                        {conversation.mode !== "live" && (
+                        {conversation.mode === "scripted_demo" && (
                           <button
                             onClick={() => scenarioDialog.current?.showModal()}
                             aria-haspopup="dialog"
