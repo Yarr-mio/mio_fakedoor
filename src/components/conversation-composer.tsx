@@ -3,15 +3,21 @@
 import { useRef, useState, type ReactNode } from "react";
 import { CONVERSATION_SCENARIOS } from "@/lib/conversation-scenarios";
 import { TONE_EXAMPLES } from "@/lib/chat-mock";
-import type { ConversationState } from "@/lib/api";
+import type { ConversationState, ServerMode } from "@/lib/api";
+import {
+  resolveLiveDraftSource,
+  type LiveOpeningExample,
+} from "@/lib/live-opening-examples";
 import { Icon } from "./need-ui";
 
 type ConversationComposerProps = {
+  mode: ServerMode | null;
   state: ConversationState;
   streaming: boolean;
   blocked: boolean;
   maxContentChars: number;
   suggestions: string[];
+  openingExamples: LiveOpeningExample[];
   error: string | null;
   onSend: (input: {
     content: string;
@@ -36,11 +42,13 @@ function suggestionText(id: string): string | null {
 }
 
 export function ConversationComposer({
+  mode,
   state,
   streaming,
   blocked,
   maxContentChars,
   suggestions,
+  openingExamples,
   error,
   onSend,
   onStop,
@@ -51,6 +59,8 @@ export function ConversationComposer({
   tools,
 }: ConversationComposerProps) {
   const [draft, setDraft] = useState("");
+  const [filledExample, setFilledExample] =
+    useState<LiveOpeningExample | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const [trayOpen, setTrayOpen] = useState(false);
@@ -66,6 +76,16 @@ export function ConversationComposer({
   const showInput = !ended;
   const busy = streaming;
   const sendDisabled = busy || ended || !draft.trim();
+  const showOpeningExamples =
+    mode === "live" && openingExamples.length > 0 && !ended;
+
+  // 예시 채움 로컬 상태
+  function fillExample(example: LiveOpeningExample) {
+    setFilledExample(example);
+    setDraft(example.text);
+    setTrayOpen(false);
+    textarea.current?.focus();
+  }
 
   function openTray() {
     if (hasTray) setTrayOpen(true);
@@ -85,8 +105,28 @@ export function ConversationComposer({
     if (!content || busy || ended) return;
     onSend({ content, source, fixtureId });
     setDraft("");
+    setFilledExample(null);
     setTrayOpen(false);
     textarea.current?.blur();
+  }
+
+  function submitDraft() {
+    const content = draft.trim();
+    if (!content || busy || ended) return;
+    if (mode === "live") {
+      const resolved = resolveLiveDraftSource(draft, filledExample);
+      onSend({
+        content,
+        source: resolved.source,
+        ...(resolved.fixtureId ? { fixtureId: resolved.fixtureId } : {}),
+      });
+      setDraft("");
+      setFilledExample(null);
+      setTrayOpen(false);
+      textarea.current?.blur();
+      return;
+    }
+    submit("typed", draft);
   }
 
   return (
@@ -104,8 +144,16 @@ export function ConversationComposer({
               {suggestionItems.map((item) => (
                 <button
                   key={item.id}
+                  type="button"
                   disabled={busy}
-                  onClick={() => submit("fixture", item.text, item.id)}
+                  onClick={() => {
+                    // 라이브 제안은 입력 채움
+                    if (mode === "live") {
+                      fillExample(item);
+                      return;
+                    }
+                    submit("fixture", item.text, item.id);
+                  }}
                 >
                   {item.text}
                 </button>
@@ -120,7 +168,9 @@ export function ConversationComposer({
           : state === "pause"
             ? "질문을 멈췄어요. 이어서 말하려면 재개하거나 직접 입력해 주세요."
             : state === "wait"
-              ? "다음 예시는 숨겨 두었어요. 원할 때만 이어서 말해 주세요."
+              ? mode === "live"
+                ? "원할 때만 이어서 말해 주세요."
+                : "다음 예시는 숨겨 두었어요. 원할 때만 이어서 말해 주세요."
               : state === "end"
                 ? "이 대화는 여기서 마쳤어요."
                 : ""}
@@ -154,11 +204,26 @@ export function ConversationComposer({
       )}
       {showInput && (
         <>
+          {showOpeningExamples && (
+            <div className="nf-first-prompts" role="group" aria-label="시작 문장 예시">
+              <p>이런 이야기로 시작해볼까요?</p>
+              {openingExamples.map((example) => (
+                <button
+                  key={example.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => fillExample(example)}
+                >
+                  {example.text}
+                </button>
+              ))}
+            </div>
+          )}
           <form
             className="nf-mock-input"
             onSubmit={(event) => {
               event.preventDefault();
-              submit("typed", draft);
+              submitDraft();
             }}
           >
             <label className="sr-only" htmlFor="live-message">
@@ -191,7 +256,7 @@ export function ConversationComposer({
                   !event.nativeEvent.isComposing
                 ) {
                   event.preventDefault();
-                  submit("typed", draft);
+                  submitDraft();
                 }
               }}
             />

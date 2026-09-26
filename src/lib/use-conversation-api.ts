@@ -97,6 +97,7 @@ export function useConversationApi() {
   });
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [openingExamplesOpen, setOpeningExamplesOpen] = useState(true);
   const [crisis, setCrisis] = useState<CrisisEvent | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -185,6 +186,9 @@ export function useConversationApi() {
       setEventSurface(listed.mode);
       setMessages(listed.messages.map(historyToLine));
       setSuggestions([]);
+      setOpeningExamplesOpen(
+        !listed.messages.some((message) => message.role === "user"),
+      );
       if (listed.state === "end") {
         blockedRef.current = true;
         setBlocked(true);
@@ -248,6 +252,7 @@ export function useConversationApi() {
     setDeletion(null);
     setDeletionOperationId(null);
     setSuggestions([]);
+    setOpeningExamplesOpen(true);
     crisisFixedRef.current = false;
     try {
       const result = await createConversation(input);
@@ -389,6 +394,7 @@ export function useConversationApi() {
       assignMode(done.mode);
       setEventSurface(done.mode);
       setSuggestions(done.interaction.suggestions);
+      setOpeningExamplesOpen(false);
       const streamError = done.finishedReason === "error";
       const crisisFixed = crisisFixedRef.current;
       crisisFixedRef.current = false;
@@ -757,6 +763,7 @@ export function useConversationApi() {
     setStateVersion(1);
     setMessages([]);
     setSuggestions([]);
+    setOpeningExamplesOpen(true);
     setCrisis(null);
     setStreaming(false);
     setBlocked(false);
@@ -830,6 +837,7 @@ export function useConversationApi() {
     limits,
     messages,
     suggestions,
+    openingExamplesOpen,
     crisis,
     streaming,
     blocked: blocked || deleted || state === "end",
