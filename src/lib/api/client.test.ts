@@ -24,7 +24,7 @@ function jsonResponse(body: unknown, init: { status?: number; headers?: Record<s
 }
 
 function sourceFiles(): string {
-  return ['client.ts', 'config.ts', 'conversations.ts', 'errors.ts', 'events.ts', 'headers.ts', 'index.ts', 'sse.ts', 'types.ts', 'visit.ts']
+  return ['admin.ts', 'client.ts', 'config.ts', 'conversations.ts', 'errors.ts', 'events.ts', 'headers.ts', 'index.ts', 'sse.ts', 'types.ts', 'visit.ts']
     .map((file) => readFileSync(join(API_DIR, file), 'utf8'))
     .join('\n');
 }
