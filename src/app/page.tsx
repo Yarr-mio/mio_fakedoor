@@ -323,6 +323,7 @@ export default function Home() {
     if (conversation.conversationId) {
       const ended = await leaveConversationQuietly();
       if (!ended) return;
+      resetContent();
       void enterChat(value);
       setToast("선택한 방향으로 새 대화를 시작해요.");
       return;
