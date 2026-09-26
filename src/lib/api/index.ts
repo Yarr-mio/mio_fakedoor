@@ -1,5 +1,5 @@
-export { apiRequest, apiRequestStream, type ApiRequestOptions } from './client';
-export { apiUrl, ApiConfigError, getApiBaseUrl } from './config';
+export { apiRequest, apiRequestStream, type ApiRequestOptions } from "./client";
+export { apiUrl, ApiConfigError, getApiBaseUrl, isMockMode } from "./config";
 export {
   ApiError,
   ApiTransportError,
@@ -15,8 +15,13 @@ export {
   type DeferredApiErrorCode,
   type KnownApiErrorCode,
   type RateLimitInfo,
-} from './errors';
-export { buildApiHeaders, createIdempotencyKey, SSE_ACCEPT, type ApiHeaderOptions } from './headers';
+} from "./errors";
+export {
+  buildApiHeaders,
+  createIdempotencyKey,
+  SSE_ACCEPT,
+  type ApiHeaderOptions,
+} from "./headers";
 export {
   CONSENT_DOCUMENT_CODES,
   CONVERSATION_STATES,
@@ -56,24 +61,27 @@ export {
   type VisitChannelKey,
   type VisitStatusData,
   type VisitorId,
-} from './types';
-export { getVisit, startVisit } from './visit';
+} from "./types";
+export { getVisit, startVisit } from "./visit";
 export {
   consumeConversationStream,
   controlConversation,
   conversationErrorMessage,
   createConversation,
+  createConversationSummary,
   deleteConversation,
   endConversation,
+  getConversationSummary,
   isLiveFallbackError,
   listAllConversationMessages,
   listConversationMessages,
   sendConversationMessage,
+  type ConversationSummaryData,
   type CreateConversationData,
   type CrisisEvent,
   type DoneEvent,
-} from './conversations';
-export { parseSseBlock, readSseStream } from './sse';
+} from "./conversations";
+export { parseSseBlock, readSseStream } from "./sse";
 export {
   EVENTS_BATCH_MAX,
   EVENTS_BODY_MAX_BYTES,
@@ -89,7 +97,7 @@ export {
   type FunnelEvent,
   type LiveObservationName,
   type PostEventsData,
-} from './events';
+} from "./events";
 export {
   buildConsentGrants,
   CONSENT_STATUS_POLL_FALLBACK_MS,
@@ -113,7 +121,8 @@ export {
   type DeletionStatus,
   type RecordConsentData,
   type WithdrawConsentData,
-} from './consent';
+} from "./consent";
+
 export {
   adminBearerAuthorization,
   adminErrorMessage,
@@ -147,4 +156,4 @@ export {
   type AdminSafetyReviewBody,
   type AdminSafetySegment,
   type AdminTokenSource,
-} from './admin';
+} from "./admin";

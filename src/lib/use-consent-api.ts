@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 import {
   buildConsentGrants,
   consentRecordErrorMessage,
@@ -15,17 +15,28 @@ import {
   type DeletionRecord,
   type RecordConsentData,
   type WithdrawConsentData,
-} from '@/lib/api/consent';
-import { createIdempotencyKey, isApiError, type ConsentDocumentCode } from '@/lib/api';
-import { LEGAL_DOCUMENT_VERSION } from '@/lib/legal-version';
-import { currentJourneyId } from '@/lib/need-events';
+} from "@/lib/api/consent";
+import {
+  createIdempotencyKey,
+  isApiError,
+  type ConsentDocumentCode,
+} from "@/lib/api";
+import { LEGAL_DOCUMENT_VERSION } from "@/lib/legal-version";
+import { currentJourneyId } from "@/lib/need-events";
 
 function grantsFingerprint(grants: ConsentGrant[]): string {
-  return grants.map((grant) => `${grant.documentCode}:${grant.documentVersion}:${grant.granted ? '1' : '0'}`).join('|');
+  return grants
+    .map(
+      (grant) =>
+        `${grant.documentCode}:${grant.documentVersion}:${grant.granted ? "1" : "0"}`,
+    )
+    .join("|");
 }
 
 function withdrawFingerprint(documentCodes?: ConsentDocumentCode[]): string {
-  return documentCodes && documentCodes.length > 0 ? [...documentCodes].sort().join(',') : '*';
+  return documentCodes && documentCodes.length > 0
+    ? [...documentCodes].sort().join(",")
+    : "*";
 }
 
 export function useConsentApi() {
@@ -35,14 +46,24 @@ export function useConsentApi() {
   const [retention, setRetention] = useState<ConsentRetention | null>(null);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
-  const [withdrawal, setWithdrawal] = useState<WithdrawConsentData | null>(null);
+  const [withdrawal, setWithdrawal] = useState<WithdrawConsentData | null>(
+    null,
+  );
   const [status, setStatus] = useState<ConsentStatusData | null>(null);
-  const recordAttempt = useRef<{ key: string; fingerprint: string } | null>(null);
-  const withdrawAttempt = useRef<{ key: string; fingerprint: string } | null>(null);
+  const recordAttempt = useRef<{ key: string; fingerprint: string } | null>(
+    null,
+  );
+  const withdrawAttempt = useRef<{ key: string; fingerprint: string } | null>(
+    null,
+  );
 
   const activeDeletion: DeletionRecord | null = (() => {
     if (!withdrawal) return null;
-    return status?.deletions.find((item) => item.operationId === withdrawal.operationId) ?? null;
+    return (
+      status?.deletions.find(
+        (item) => item.operationId === withdrawal.operationId,
+      ) ?? null
+    );
   })();
 
   useEffect(() => {
@@ -55,10 +76,15 @@ export function useConsentApi() {
         const result = await getConsentStatus(operationId);
         if (cancelled) return;
         setStatus(result.data);
-        const deletion = result.data.deletions.find((item) => item.operationId === operationId);
-        const nextStatus = deletion?.status ?? 'pending';
-        if (nextStatus === 'succeeded' || nextStatus === 'failed') return;
-        timer = window.setTimeout(tick, consentStatusPollDelayMs(result.retryAfterSeconds, nextStatus));
+        const deletion = result.data.deletions.find(
+          (item) => item.operationId === operationId,
+        );
+        const nextStatus = deletion?.status ?? "pending";
+        if (nextStatus === "succeeded" || nextStatus === "failed") return;
+        timer = window.setTimeout(
+          tick,
+          consentStatusPollDelayMs(result.retryAfterSeconds, nextStatus),
+        );
       } catch (error) {
         if (cancelled) return;
         setWithdrawError(consentWithdrawErrorMessage(error));
@@ -71,7 +97,9 @@ export function useConsentApi() {
     };
   }, [withdrawal?.operationId]);
 
-  async function submitRecord(selection: Record<ConsentDocumentCode, boolean>): Promise<RecordConsentData | null> {
+  async function submitRecord(
+    selection: Record<ConsentDocumentCode, boolean>,
+  ): Promise<RecordConsentData | null> {
     const grants = buildConsentGrants(selection, LEGAL_DOCUMENT_VERSION);
     const fingerprint = grantsFingerprint(grants);
     if (recordAttempt.current?.fingerprint !== fingerprint) {
@@ -89,7 +117,7 @@ export function useConsentApi() {
       setRetention(result.data.retention);
       return result.data;
     } catch (error) {
-      if (isApiError(error) && error.code === 'CONFLICT') {
+      if (isApiError(error) && error.code === "CONFLICT") {
         recordAttempt.current = { key: createIdempotencyKey(), fingerprint };
       }
       setRecordError(consentRecordErrorMessage(error));
@@ -99,7 +127,9 @@ export function useConsentApi() {
     }
   }
 
-  async function submitWithdraw(documentCodes?: ConsentDocumentCode[]): Promise<WithdrawConsentData | null> {
+  async function submitWithdraw(
+    documentCodes?: ConsentDocumentCode[],
+  ): Promise<WithdrawConsentData | null> {
     const fingerprint = withdrawFingerprint(documentCodes);
     if (withdrawAttempt.current?.fingerprint !== fingerprint) {
       withdrawAttempt.current = { key: createIdempotencyKey(), fingerprint };
@@ -114,7 +144,7 @@ export function useConsentApi() {
       setWithdrawal(result.data);
       return result.data;
     } catch (error) {
-      if (isApiError(error) && error.code === 'CONFLICT') {
+      if (isApiError(error) && error.code === "CONFLICT") {
         withdrawAttempt.current = { key: createIdempotencyKey(), fingerprint };
       }
       setWithdrawError(consentWithdrawErrorMessage(error));
@@ -125,11 +155,32 @@ export function useConsentApi() {
   }
 
   async function retryFailedDeletion(): Promise<WithdrawConsentData | null> {
-    if (activeDeletion?.status !== 'failed' || activeDeletion.retryable !== true) return null;
-    const fingerprint = withdrawAttempt.current?.fingerprint ?? '*';
-    const codes = fingerprint === '*' ? undefined : fingerprint.split(',') as ConsentDocumentCode[];
+    if (
+      activeDeletion?.status !== "failed" ||
+      activeDeletion.retryable !== true
+    )
+      return null;
+    const fingerprint = withdrawAttempt.current?.fingerprint ?? "*";
+    const codes =
+      fingerprint === "*"
+        ? undefined
+        : (fingerprint.split(",") as ConsentDocumentCode[]);
     withdrawAttempt.current = { key: createIdempotencyKey(), fingerprint };
     return submitWithdraw(codes);
+  }
+
+  function resetConsentSession(): void {
+    // 새 시작 철회 보유 초기화
+    setRecordBusy(false);
+    setRecordError(null);
+    setRecorded(null);
+    setRetention(null);
+    setWithdrawBusy(false);
+    setWithdrawError(null);
+    setWithdrawal(null);
+    setStatus(null);
+    recordAttempt.current = null;
+    withdrawAttempt.current = null;
   }
 
   return {
@@ -145,5 +196,6 @@ export function useConsentApi() {
     activeDeletion,
     submitWithdraw,
     retryFailedDeletion,
+    resetConsentSession,
   };
 }
