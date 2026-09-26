@@ -1,8 +1,15 @@
-'use client';
+"use client";
 
-import type { CrisisEvent } from '@/lib/api/conversations';
+import type { CrisisEvent } from "@/lib/api/conversations";
 
-export function CrisisNotice({ crisis, ended }: { crisis: CrisisEvent; ended: boolean }) {
+export function CrisisNotice({
+  crisis,
+  ended,
+}: {
+  crisis: CrisisEvent;
+  ended: boolean;
+}) {
+  // 기관 안내 후 대화 유지 또는 종료
   return (
     <aside className="nf-crisis" role="alert">
       {crisis.fixedResponse ? <p>{crisis.fixedResponse}</p> : null}
@@ -31,8 +38,8 @@ export function CrisisNotice({ crisis, ended }: { crisis: CrisisEvent; ended: bo
       ) : null}
       {ended && crisis.reviewRequest ? (
         <p className="nf-crisis-review">
-          자동 분류로 대화가 멈춘 경우 사람 재검토를 요청할 수 있어요. 실시간 상담사 연결은 없어요.
-          조회 코드 {crisis.reviewRequest.referenceCode}
+          자동 분류로 대화가 멈춘 경우 사람 재검토를 요청할 수 있어요. 실시간
+          상담사 연결은 없어요. 조회 코드 {crisis.reviewRequest.referenceCode}
           <a href={`mailto:${crisis.reviewRequest.contact}`}>재검토 문의</a>
         </p>
       ) : null}
