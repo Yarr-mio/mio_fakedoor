@@ -806,6 +806,17 @@ export function summaryErrorMessage(error: unknown): string {
   return "정리를 요청하지 못했어요";
 }
 
+export const SUMMARY_SECTION_LABELS = [
+  "상황",
+  "표현한 감정",
+  "남아 있는 고민",
+] as const;
+
+export type SummarySection = {
+  label: (typeof SUMMARY_SECTION_LABELS)[number];
+  body: string;
+};
+
 export function formatConversationSummaryText(
   summary: ConversationSummaryData,
 ): string {
@@ -815,5 +826,35 @@ export function formatConversationSummaryText(
       ? EMPTY_EXPRESSED_EMOTIONS_COPY
       : summary.expressedEmotions.map((item) => item.label).join("\n");
   const concerns = summary.remainingConcerns.join("\n");
-  return `상황\n${situation}\n\n표현한 감정\n${emotions}\n\n남아 있는 고민\n${concerns}`;
+  const bodies = [situation, emotions, concerns];
+  return SUMMARY_SECTION_LABELS.map(
+    (label, index) => `${label}\n${bodies[index] ?? ""}`,
+  ).join("\n\n");
+}
+
+export function splitFormattedSummarySections(
+  text: string,
+): SummarySection[] | null {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const starts: number[] = [];
+  let searchFrom = 0;
+  for (const label of SUMMARY_SECTION_LABELS) {
+    const index = lines.findIndex(
+      (line, lineIndex) => lineIndex >= searchFrom && line.trim() === label,
+    );
+    if (index < 0) return null;
+    starts.push(index);
+    searchFrom = index + 1;
+  }
+  const preamble = lines.slice(0, starts[0]).some((line) => line.trim());
+  if (preamble) return null;
+  return SUMMARY_SECTION_LABELS.map((label, index) => {
+    const from = starts[index] + 1;
+    const to =
+      index + 1 < starts.length ? starts[index + 1] : lines.length;
+    return {
+      label,
+      body: lines.slice(from, to).join("\n").trim(),
+    };
+  });
 }

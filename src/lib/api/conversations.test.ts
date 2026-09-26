@@ -12,10 +12,12 @@ import {
   isLiveFallbackError,
   isSummaryJudgeFailed,
   listConversationMessages,
+  formatConversationSummaryText,
   parseConversationSummary,
   parseCrisisEvent,
   parseDeltaReplaceEvent,
   sendConversationMessage,
+  splitFormattedSummarySections,
   summaryErrorMessage,
 } from "./conversations";
 
@@ -495,5 +497,28 @@ describe("conversation summary", () => {
       (value) => value,
     );
     expect(summaryErrorMessage(error)).toBe("정리 문장을 만들지 못했어요");
+  });
+
+  it("splits a formatted summary into the three sections", () => {
+    const text = formatConversationSummaryText({
+      summaryId: "sum_1",
+      conversationId: "c1",
+      mode: "scripted_demo",
+      source: "fixture",
+      situation: "퇴근 후 말이 계속 떠오른다",
+      expressedEmotions: [
+        { label: "창피함", evidenceMessageId: "msg_in_1" },
+      ],
+      remainingConcerns: ["내일 팀장을 다시 봐야 한다"],
+      judgeStatus: "skipped",
+      droppedAttributions: 0,
+      generatedAt: "2026-09-22T09:12:00Z",
+    });
+    expect(splitFormattedSummarySections(text)).toEqual([
+      { label: "상황", body: "퇴근 후 말이 계속 떠오른다" },
+      { label: "표현한 감정", body: "창피함" },
+      { label: "남아 있는 고민", body: "내일 팀장을 다시 봐야 한다" },
+    ]);
+    expect(splitFormattedSummarySections("자유롭게 고친 문장")).toBeNull();
   });
 });

@@ -946,8 +946,27 @@
   border-bottom: 1px solid #59407024;
   color: #655282;
 }
-.nf-note-title h2 {
+.nf-note-title h2,
+.nf-summary-section-title {
   font-size: 13px;
+  color: #655282;
+}
+.nf-summary-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8em;
+  margin-top: 20px;
+}
+.nf-summary-section-title {
+  margin: 0;
+  font-weight: 550;
+  line-height: 1.4;
+}
+.nf-summary-section p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
 }
 .nf-note-title span {
   margin-left: auto;
@@ -1626,7 +1645,8 @@
   .nf-note-paper {
     padding: 21px;
   }
-  .nf-note-title h2 {
+  .nf-note-title h2,
+  .nf-summary-section-title {
     font-size: 12px;
   }
   .nf-note-content {

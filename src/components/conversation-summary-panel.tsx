@@ -2,12 +2,27 @@
 
 import type { ReactNode } from "react";
 import {
-  EMPTY_EXPRESSED_EMOTIONS_COPY,
   formatConversationSummaryText,
   isSummaryJudgeFailed,
+  splitFormattedSummarySections,
   type ConversationSummaryData,
 } from "@/lib/api/conversations";
 import { Icon, Primary } from "./need-ui";
+
+function SummarySections({ text }: { text: string }) {
+  const sections = splitFormattedSummarySections(text);
+  if (!sections) return <p className="nf-note-content">{text}</p>;
+  return (
+    <div className="nf-summary-sections">
+      {sections.map((section) => (
+        <section key={section.label} className="nf-summary-section">
+          <h3 className="nf-summary-section-title">{section.label}</h3>
+          <p>{section.body}</p>
+        </section>
+      ))}
+    </div>
+  );
+}
 
 type ConversationSummaryPanelProps = {
   title: (text: ReactNode) => ReactNode;
@@ -120,8 +135,11 @@ export function ConversationSummaryPanel({
       ) : null}
       {summary && !failed && !editing && dirty ? (
         <article className="nf-note-paper">
-          <h2>내가 수정한 정리</h2>
-          <p className="nf-note-content">{editDraft}</p>
+          <div className="nf-note-title">
+            <Icon name="note" size={18} />
+            <h2>내가 수정한 정리</h2>
+          </div>
+          <SummarySections text={editDraft} />
         </article>
       ) : null}
       {summary && !failed && !editing && !dirty ? (
@@ -133,32 +151,7 @@ export function ConversationSummaryPanel({
               <small className="nf-ai-badge">AI 생성</small>
             ) : null}
           </div>
-          <dl>
-            <div>
-              <dt>상황</dt>
-              <dd>{summary.situation ?? ""}</dd>
-            </div>
-            <div>
-              <dt>표현한 감정</dt>
-              <dd>
-                {summary.expressedEmotions.length === 0
-                  ? EMPTY_EXPRESSED_EMOTIONS_COPY
-                  : summary.expressedEmotions
-                      .map((item) => item.label)
-                      .join(", ")}
-              </dd>
-            </div>
-            <div>
-              <dt>남아 있는 고민</dt>
-              <dd>
-                {summary.remainingConcerns.length === 0
-                  ? ""
-                  : summary.remainingConcerns.map((item, index) => (
-                      <p key={`${index}-${item}`}>{item}</p>
-                    ))}
-              </dd>
-            </div>
-          </dl>
+          <SummarySections text={formatConversationSummaryText(summary)} />
         </article>
       ) : null}
       {summary && !failed && !editing ? (
