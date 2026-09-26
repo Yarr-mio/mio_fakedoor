@@ -42,8 +42,7 @@ export type Screen =
   | "finish"
   | "feedback"
   | "done"
-  | "interest"
-  | "quiet_done";
+  | "interest";
 export type DemoMessage = {
   role: "mio" | "user";
   text: string;

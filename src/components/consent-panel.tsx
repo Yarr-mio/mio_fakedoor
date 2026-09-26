@@ -64,7 +64,6 @@ export function ConsentPanel({
   onCancel,
   busy = false,
   error,
-  retention,
 }: {
   value: ConsentSelection;
   onChange: (value: ConsentSelection) => void;
@@ -72,7 +71,6 @@ export function ConsentPanel({
   onCancel: () => void;
   busy?: boolean;
   error?: string | null;
-  retention?: ConsentRetention | null;
 }) {
   const [document, setDocument] = useState<LegalDocumentId>("terms");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -159,8 +157,12 @@ export function ConsentPanel({
           <button onClick={() => open("privacy")}>개인정보 처리방침</button>에서
           확인할 수 있어요.
         </p>
-        {error ? <p className="nf-consent-error" role="alert">{error}</p> : null}
-        {retention ? <ConsentRetentionNotice retention={retention} /> : null}
+        {error ? (
+          <p className="nf-consent-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {/* 약관 화면 보유기간 미표시 */}
         <Primary onClick={onContinue} disabled={busy || !canContinue(value)}>
           {busy ? "동의 기록 중" : "동의하고 시작하기"}
         </Primary>
@@ -196,27 +198,70 @@ export function ConsentPanel({
   );
 }
 
-export function ConsentRetentionNotice({ retention }: { retention: ConsentRetention }) {
+const SUNSET_POLICY_LABELS: Record<string, string> = {
+  until_purpose_ends: "이용 목적이 끝나는 때까지 보관해요",
+};
+
+function sunsetPolicyLabel(value: string): string | null {
+  if (SUNSET_POLICY_LABELS[value]) return SUNSET_POLICY_LABELS[value];
+  if (/^[a-z0-9_]+$/.test(value)) return null;
+  return value;
+}
+
+export function ConsentRetentionNotice({
+  retention,
+  variant = "card",
+}: {
+  retention: ConsentRetention;
+  variant?: "card" | "panel";
+}) {
   const content =
-    retention.conversationContent === CONVERSATION_CONTENT_UNTIL_DELETION_OR_WITHDRAWAL
+    retention.conversationContent ===
+    CONVERSATION_CONTENT_UNTIL_DELETION_OR_WITHDRAWAL
       ? "대화 원문은 삭제 요청 또는 민감정보 동의 철회 시까지 보관해요"
-      : retention.conversationContent;
+      : /^[a-z0-9_]+$/.test(retention.conversationContent)
+        ? null
+        : retention.conversationContent;
+  const sunset = sunsetPolicyLabel(retention.sunsetPolicy);
+  const items = (
+    <ul className={variant === "panel" ? "nf-retention-list" : undefined}>
+      {content ? <li>{content}</li> : null}
+      <li>
+        삭제 요청 후 운영 저장은 {retention.deletionDeadlineDays.database}일
+        이내 백업은 {retention.deletionDeadlineDays.backup}일 이내에 지워요
+      </li>
+      <li>
+        접속과 이용 기록은 {retention.operationalLogDays}일 보관하며 원문과
+        민감정보는 넣지 않아요
+      </li>
+      <li>
+        동의와 철회 기록은 전체 철회 또는 서비스 종료 후{" "}
+        {retention.consentHistoryYears}년 보관해요
+      </li>
+      {sunset ? <li>{sunset}</li> : null}
+    </ul>
+  );
+  if (variant === "panel") {
+    return (
+      <section className="nf-withdraw" aria-labelledby="retention-heading">
+        <h2 id="retention-heading">보유 기간 안내</h2>
+        {items}
+      </section>
+    );
+  }
   return (
     <div className="nf-retention">
       <p>보유 기간 안내</p>
-      <ul>
-        <li>{content}</li>
-        <li>
-          삭제 요청 후 운영 저장은 {retention.deletionDeadlineDays.database}일 이내 백업은 {retention.deletionDeadlineDays.backup}일 이내에 지워요
-        </li>
-        <li>
-          접속과 이용 기록은 {retention.operationalLogDays}일 보관하며 원문과 민감정보는 넣지 않아요
-        </li>
-        <li>
-          동의와 철회 기록은 전체 철회 또는 서비스 종료 후 {retention.consentHistoryYears}년 보관해요
-        </li>
-        <li>{retention.sunsetPolicy}</li>
-      </ul>
+      {items}
+    </div>
+  );
+}
+
+export function ConsentRequestNotice() {
+  return (
+    <div className="nf-consent-request-notice" role="status">
+      <p>요청이 접수되었어요.</p>
+      <p>원문 없는 집계는 남을 수 있으니 참고해 주세요.</p>
     </div>
   );
 }
@@ -228,14 +273,6 @@ const withdrawLabels: Record<ConsentDocumentCode, string> = {
   sensitive: "민감정보 수집 및 이용",
   marketing: "마케팅 정보 수신",
 };
-
-function deletionStatusLabel(status: string): string {
-  if (status === "pending") return "접수됨";
-  if (status === "in_progress") return "처리 중";
-  if (status === "succeeded") return "완료";
-  if (status === "failed") return "실패";
-  return status;
-}
 
 export function ConsentWithdrawPanel({
   busy,
@@ -252,17 +289,23 @@ export function ConsentWithdrawPanel({
   onWithdraw: (documentCodes?: ConsentDocumentCode[]) => void;
   onRetryFailed: () => void;
 }) {
-  const [selected, setSelected] = useState<ConsentDocumentCode[]>(["sensitive"]);
+  const [selected, setSelected] = useState<ConsentDocumentCode[]>([
+    "sensitive",
+  ]);
+  const locked = busy || Boolean(withdrawal);
   function toggle(code: ConsentDocumentCode) {
     setSelected((current) =>
-      current.includes(code) ? current.filter((item) => item !== code) : [...current, code],
+      current.includes(code)
+        ? current.filter((item) => item !== code)
+        : [...current, code],
     );
   }
   return (
     <section className="nf-withdraw" aria-labelledby="withdraw-heading">
       <h2 id="withdraw-heading">동의 철회와 삭제 요청</h2>
       <p>
-        개인정보 또는 민감정보 동의를 철회하면 대화 원문 삭제를 접수하고 진행 중 대화는 바로 마쳐요
+        개인정보 또는 민감정보 동의를 철회하면 대화 원문 삭제를 접수하고 진행 중
+        대화는 바로 마쳐요
       </p>
       <div className="nf-withdraw-codes">
         {CONSENT_DOCUMENT_CODES.map((code) => (
@@ -270,38 +313,25 @@ export function ConsentWithdrawPanel({
             <input
               type="checkbox"
               checked={selected.includes(code)}
-              disabled={busy}
+              disabled={locked}
               onChange={() => toggle(code)}
             />
             {withdrawLabels[code]}
           </label>
         ))}
       </div>
-      <div className="nf-withdraw-actions">
-        <button
-          className="nf-secondary"
-          disabled={busy || selected.length === 0}
-          onClick={() => onWithdraw(selected)}
-        >
-          선택한 항목 철회
-        </button>
-        <button className="nf-text-button" disabled={busy} onClick={() => onWithdraw()}>
-          전체 철회
-        </button>
-      </div>
-      {error ? <p className="nf-consent-error" role="alert">{error}</p> : null}
       {withdrawal ? (
-        <div className="nf-withdraw-status" aria-live="polite">
-          <p>요청 상태 {deletionStatusLabel(deletion?.status ?? withdrawal.status)}</p>
-          <p>작업 번호 {withdrawal.operationId}</p>
-          {withdrawal.aggregateRetained ? (
-            <p>원문 없는 집계는 남을 수 있어요</p>
-          ) : null}
+        <div aria-live="polite">
+          <ConsentRequestNotice />
           {deletion?.status === "failed" && deletion.error ? (
-            <p>{deletion.error.message}</p>
+            <p className="nf-consent-error">{deletion.error.message}</p>
           ) : null}
           {deletion?.status === "failed" && deletion.retryable === true ? (
-            <button className="nf-text-button" disabled={busy} onClick={onRetryFailed}>
+            <button
+              className="nf-text-button"
+              disabled={busy}
+              onClick={onRetryFailed}
+            >
               다시 요청하기
             </button>
           ) : null}
@@ -309,8 +339,32 @@ export function ConsentWithdrawPanel({
             <p>지금은 다시 요청할 수 없어요</p>
           ) : null}
         </div>
+      ) : (
+        <div className="nf-withdraw-actions">
+          <button
+            className="nf-secondary"
+            disabled={locked || selected.length === 0}
+            onClick={() => onWithdraw(selected)}
+          >
+            선택한 항목 철회
+          </button>
+          <button
+            className="nf-text-button"
+            disabled={locked}
+            onClick={() => {
+              setSelected([...CONSENT_DOCUMENT_CODES]);
+              onWithdraw();
+            }}
+          >
+            전체 철회
+          </button>
+        </div>
+      )}
+      {error ? (
+        <p className="nf-consent-error" role="alert">
+          {error}
+        </p>
       ) : null}
     </section>
   );
 }
-

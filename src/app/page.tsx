@@ -31,6 +31,7 @@ import {
 import { MockChatComposer } from "@/components/mock-chat-composer";
 import { ConversationComposer } from "@/components/conversation-composer";
 import { CrisisNotice } from "@/components/crisis-notice";
+import { ConversationSummaryPanel } from "@/components/conversation-summary-panel";
 import {
   endsConversationOnWithdraw,
   type ConsentDocumentCode,
@@ -46,7 +47,7 @@ import "./prototype.css";
 
 export default function Home() {
   const internal = useInternalMode();
-  const [screen, setScreen] = useState<Screen>("landing");
+  const [userScreen, setScreen] = useState<Screen>("landing");
   const [need, setNeed] = useState<Need>("listen");
   const [messages, setMessages] = useState<DemoMessage[]>([]);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
@@ -61,6 +62,12 @@ export default function Home() {
       : mockFollowUp(messages);
   const consentApi = useConsentApi();
   const conversation = useConversationApi();
+  const screen =
+    userScreen === "landing" && conversation.sessionResume
+      ? conversation.sessionResume.state === "end"
+        ? "done"
+        : "chat"
+      : userScreen;
   const [demoFallback, setDemoFallback] = useState<DemoFallbackReason | null>(
     null,
   );
@@ -77,6 +84,7 @@ export default function Home() {
         (message) => message.role === "user" && message.source === "fixture",
       );
   const [followup, setFollowup] = useState("");
+  const [followupWait, setFollowupWait] = useState(false);
   const [consent, setConsent] = useState({ ...EMPTY_CONSENT });
   const [pendingNeed, setPendingNeed] = useState<Need | null>(null);
   const [returnScreen, setReturnScreen] = useState<Screen>("landing");
@@ -88,6 +96,9 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
   const scenarioDialog = useRef<HTMLDialogElement>(null);
+  const withdrawDialog = useRef<HTMLDialogElement>(null);
+  const retentionDialog = useRef<HTMLDialogElement>(null);
+  const followupTimer = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const viewed = useRef(false);
@@ -102,6 +113,12 @@ export default function Home() {
     }
   }, []);
   useEffect(() => {
+    window.__mioMockUsingApi = usingApi;
+    return () => {
+      window.__mioMockUsingApi = undefined;
+    };
+  }, [usingApi]);
+  useEffect(() => {
     heading.current?.focus();
     window.scrollTo({ top: 0 });
   }, [screen]);
@@ -111,12 +128,21 @@ export default function Home() {
         top: log.current.scrollHeight,
         behavior: "auto",
       });
-  }, [messages, mockPreview, screen, conversation.messages, conversation.streaming]);
+  }, [
+    messages,
+    mockPreview,
+    screen,
+    conversation.messages,
+    conversation.streaming,
+  ]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    return () => window.clearTimeout(followupTimer.current);
+  }, []);
 
   function openSupport(from: Screen) {
     if (from === "chat") void conversation.cancelActiveStream();
@@ -146,6 +172,7 @@ export default function Home() {
       ...(next ? { need: next } : {}),
     });
     resetContent();
+    consentApi.resetConsentSession();
     setPendingNeed(next);
     setConsent({ ...EMPTY_CONSENT });
     setScreen("intro");
@@ -191,6 +218,7 @@ export default function Home() {
   async function requestWithdraw(documentCodes?: ConsentDocumentCode[]) {
     const result = await consentApi.submitWithdraw(documentCodes);
     if (!result) return;
+    withdrawDialog.current?.close();
     if (endsConversationOnWithdraw(documentCodes) && screen === "chat") {
       setStreamCancelToken((value) => value + 1);
       void conversation.cancelActiveStream();
@@ -213,22 +241,32 @@ export default function Home() {
         "수정한 정리는 유지돼요. 새 내용을 반영하려면 정리 화면에서 다시 불러와주세요.",
       );
   }
-  function openSummary() {
-    void conversation.cancelActiveStream();
-    const sourceMessages: DemoMessage[] = usingApi
-      ? conversation.messages.map((message) => ({
-          role: message.role,
-          text: message.content,
-          source:
-            message.source === "fixture"
-              ? "fixture"
-              : message.source === "typed"
-                ? "typed"
-                : "mock",
-          fixtureId: message.fixtureId,
-        }))
-      : messages;
-    if (!summaryDirty) setSummary(summaryOf(sourceMessages));
+  async function openSummary() {
+    await conversation.cancelActiveStream();
+    if (usingApi) {
+      if (conversation.streaming) {
+        setToast("응답을 만드는 중이에요 잠시 후 다시 시도해 주세요");
+        return;
+      }
+      if (conversation.state !== "offer" && conversation.state !== "wait")
+        return;
+      if (!conversation.messages.some((message) => message.role === "user"))
+        return;
+      setSummaryDirty(false);
+      setEditing(false);
+      setScreen("summary");
+      trackNeed("summary_opened", {
+        need,
+        rating: hasFixture ? "selected_fixtures" : "default_sample",
+      });
+      const result = await conversation.openOrCreateSummary();
+      if (result.fallback) {
+        setDemoFallback(result.fallback);
+        setScreen("chat");
+      }
+      return;
+    }
+    if (!summaryDirty) setSummary(summaryOf(messages));
     setEditing(false);
     setScreen("summary");
     trackNeed("summary_opened", {
@@ -242,7 +280,7 @@ export default function Home() {
     if (usingApi) await conversation.finishConversation("quiet");
     resetContent();
     if (crisisSnapshot) setEndCrisis(crisisSnapshot);
-    setScreen("quiet_done");
+    setScreen("done");
   }
   function finish() {
     if (chatState === "end") {
@@ -280,13 +318,15 @@ export default function Home() {
     setScreen("chat");
     setToast("대화 예시는 유지하고, 선택한 방향을 바꿨어요.");
   }
-  function downloadSummary() {
-    const blob = new Blob(
-      [
-        `Mio · 가상 대화 예시\nAI가 생성한 개인 상담 요약이 아닙니다.\n\n${summary}`,
-      ],
-      { type: "text/plain;charset=utf-8" },
-    );
+  function downloadSummary(text = summary) {
+    const apiSource = usingApi ? conversation.summary?.source : null;
+    const heading =
+      apiSource === "model"
+        ? "Mio 이야기 정리\nAI 생성\n\n"
+        : "Mio · 가상 대화 예시\nAI가 생성한 개인 상담 요약이 아닙니다.\n\n";
+    const blob = new Blob([`${heading}${text}`], {
+      type: "text/plain;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -306,10 +346,26 @@ export default function Home() {
       ? "천천히 시작하기"
       : NEEDS.find((item) => item.id === need)?.title;
   const home = () => {
+    window.clearTimeout(followupTimer.current);
+    setFollowup("");
+    setFollowupWait(false);
     void conversation.cancelActiveStream();
     resetContent();
+    consentApi.resetConsentSession();
     setScreen("landing");
   };
+  function pickFollowup(id: "perspective" | "existing" | "none") {
+    setFollowup(id);
+    setFollowupWait(true);
+    trackNeed("followup_choice", { rating: id });
+    window.clearTimeout(followupTimer.current);
+    // 확인 문구 읽기 대기
+    followupTimer.current = window.setTimeout(() => {
+      setFollowupWait(false);
+      if (id === "perspective") openSupport("done");
+      else home();
+    }, 1800);
+  }
 
   return (
     <div className="nf-app nf-light">
@@ -329,12 +385,12 @@ export default function Home() {
                 방향 바꾸기
               </button>
               {conversation.mode !== "live" ? (
-              <button
-                onClick={() => scenarioDialog.current?.showModal()}
-                aria-haspopup="dialog"
-              >
-                다른 대화 상황
-              </button>
+                <button
+                  onClick={() => scenarioDialog.current?.showModal()}
+                  aria-haspopup="dialog"
+                >
+                  다른 대화 상황
+                </button>
               ) : null}
             </>
           ) : (
@@ -489,7 +545,6 @@ export default function Home() {
               onCancel={home}
               busy={consentApi.recordBusy}
               error={consentApi.recordError}
-              retention={consentApi.retention}
             />
           </div>
         )}
@@ -576,11 +631,25 @@ export default function Home() {
                     {title("미오")}
                   </div>
                   <p>{needLabel}</p>
-                  <p className="nf-ai-notice">AI 대화예요. 실시간 상담사 연결은 없어요.</p>
+                  <p className="nf-ai-notice">
+                    AI 대화예요. 실시간 상담사 연결은 없어요.
+                  </p>
                 </div>
-                <button className="nf-small-button" onClick={finish}>
-                  마무리
-                </button>
+                <div className="nf-chat-heading-actions">
+                  <button
+                    className="nf-privacy-button"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-controls="withdraw-dialog"
+                    onClick={() => withdrawDialog.current?.showModal()}
+                  >
+                    <Icon name="shield" size={16} />
+                    개인정보
+                  </button>
+                  <button className="nf-small-button" onClick={finish}>
+                    마무리
+                  </button>
+                </div>
               </div>
               {demoFallback ? (
                 <p className="nf-demo-fallback" role="status">
@@ -596,13 +665,19 @@ export default function Home() {
                 aria-label="대화"
                 aria-live="polite"
               >
-                {(usingApi ? conversation.messages : messages.map((message, index) => ({
-                  messageId: `local-${index}`,
-                  role: message.role,
-                  source: message.source === "mock" ? "model" : message.source ?? "typed",
-                  content: message.text,
-                  status: "complete" as const,
-                }))).map((message) => (
+                {(usingApi
+                  ? conversation.messages
+                  : messages.map((message, index) => ({
+                      messageId: `local-${index}`,
+                      role: message.role,
+                      source:
+                        message.source === "mock"
+                          ? "model"
+                          : (message.source ?? "typed"),
+                      content: message.text,
+                      status: "complete" as const,
+                    }))
+                ).map((message) => (
                   <div
                     className={`nf-message nf-message-${message.role}`}
                     key={message.messageId}
@@ -614,12 +689,10 @@ export default function Home() {
                       {message.role === "mio" && (
                         <span className="nf-speaker">미오</span>
                       )}
-                      <p>
-                        {message.content}
-                        {message.status === "streaming" ? (
-                          <span className="nf-stream-cursor">▍</span>
-                        ) : null}
-                      </p>
+                      <p>{message.content}</p>
+                      {message.status === "failed" ? (
+                        <small>보내지 못했어요</small>
+                      ) : null}
                       {message.role === "mio" && message.source === "model" ? (
                         <small>AI 생성</small>
                       ) : null}
@@ -631,17 +704,17 @@ export default function Home() {
                     <span className="nf-message-star">✳</span>
                     <div>
                       <span className="nf-speaker">미오</span>
-                      <p>
-                        {mockPreview}
-                        <span className="nf-stream-cursor">▍</span>
-                      </p>
+                      <p>{mockPreview}</p>
                     </div>
                   </div>
                 )}
                 {usingApi && conversation.crisis ? (
                   <CrisisNotice
                     crisis={conversation.crisis}
-                    ended={conversation.state === "end" || conversation.crisis.flow === "end"}
+                    ended={
+                      conversation.state === "end" ||
+                      conversation.crisis.flow === "end"
+                    }
                   />
                 ) : null}
               </div>
@@ -658,6 +731,7 @@ export default function Home() {
                     messages={conversation.messages}
                     scenarioId={scenarioId}
                     error={conversation.error}
+                    retryable={conversation.retryable}
                     onSend={(input) => {
                       void conversation.send(input).then((result) => {
                         if (result.fallback) setDemoFallback(result.fallback);
@@ -690,8 +764,19 @@ export default function Home() {
                             다른 대화 상황
                           </button>
                         )}
-                        {(conversation.state === "offer" || conversation.state === "wait") && (
-                          <button onClick={openSummary}>
+                        {(conversation.state === "offer" ||
+                          conversation.state === "wait") && (
+                          <button
+                            onClick={() => {
+                              void openSummary();
+                            }}
+                            disabled={
+                              conversation.streaming ||
+                              !conversation.messages.some(
+                                (message) => message.role === "user",
+                              )
+                            }
+                          >
                             <Icon name="note" size={16} />
                             정리 보기
                           </button>
@@ -711,78 +796,120 @@ export default function Home() {
                     }
                   />
                 ) : (
-                <MockChatComposer
-                  key={`${need}:${scenarioId ?? "free"}:${scenarioRun}:${streamCancelToken}`}
-                  need={need}
-                  hasUserMessage={hasUserMessage}
-                  scenarioId={scenarioId}
-                  messages={messages}
-                  followUp={followUp}
-                  onResume={() => setResumedAt(messages.length)}
-                  onEnd={() => {
-                    void endQuietly();
-                  }}
-                  onMessage={appendMockMessage}
-                  onPreview={setMockPreview}
-                  tools={
-                    <div className="nf-quick-actions">
-                      <button onClick={() => dialog.current?.showModal()}>
-                        <Icon name="compass" size={16} />
-                        방향 바꾸기
-                      </button>
-                      <button
-                        onClick={() => scenarioDialog.current?.showModal()}
-                        aria-haspopup="dialog"
-                      >
-                        <Icon name="chat" size={16} />
-                        다른 대화 상황
-                      </button>
-                      {(chatState === "offer" || chatState === "wait") && (
-                        <button onClick={openSummary}>
-                          <Icon name="note" size={16} />
-                          정리 보기
+                  <MockChatComposer
+                    key={`${need}:${scenarioId ?? "free"}:${scenarioRun}:${streamCancelToken}`}
+                    need={need}
+                    hasUserMessage={hasUserMessage}
+                    scenarioId={scenarioId}
+                    messages={messages}
+                    followUp={followUp}
+                    onResume={() => setResumedAt(messages.length)}
+                    onEnd={() => {
+                      void endQuietly();
+                    }}
+                    onMessage={appendMockMessage}
+                    onPreview={setMockPreview}
+                    tools={
+                      <div className="nf-quick-actions">
+                        <button onClick={() => dialog.current?.showModal()}>
+                          <Icon name="compass" size={16} />
+                          방향 바꾸기
                         </button>
-                      )}
-                      <button onClick={() => openSupport("chat")}>
-                        <Icon name="external" size={15} />
-                        지원 정보
-                      </button>
-                      {internal && (
-                        <Link
-                          className="nf-tone-link-mobile"
-                          href="/tone-guide"
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => scenarioDialog.current?.showModal()}
+                          aria-haspopup="dialog"
                         >
-                          톤 가이드 ↗
-                        </Link>
-                      )}
-                    </div>
-                  }
-                />
+                          <Icon name="chat" size={16} />
+                          다른 대화 상황
+                        </button>
+                        {(chatState === "offer" || chatState === "wait") && (
+                          <button
+                            onClick={() => {
+                              void openSummary();
+                            }}
+                          >
+                            <Icon name="note" size={16} />
+                            정리 보기
+                          </button>
+                        )}
+                        <button onClick={() => openSupport("chat")}>
+                          <Icon name="external" size={15} />
+                          지원 정보
+                        </button>
+                        {internal && (
+                          <Link
+                            className="nf-tone-link-mobile"
+                            href="/tone-guide"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            톤 가이드 ↗
+                          </Link>
+                        )}
+                      </div>
+                    }
+                  />
                 )}
                 {conversation.deleted ? (
                   <p className="nf-withdraw-status" role="status">
                     이 대화 삭제를 요청했어요. 화면에서는 더 볼 수 없어요.
-                    {conversation.deletion ? ` 상태 ${conversation.deletion.status}` : null}
+                    {conversation.deletion
+                      ? ` 상태 ${conversation.deletion.status}`
+                      : null}
                   </p>
                 ) : null}
-                <ConsentWithdrawPanel
-                  busy={consentApi.withdrawBusy}
-                  error={consentApi.withdrawError}
-                  withdrawal={consentApi.withdrawal}
-                  deletion={consentApi.activeDeletion}
-                  onWithdraw={requestWithdraw}
-                  onRetryFailed={() => {
-                    void consentApi.retryFailedDeletion();
-                  }}
-                />
               </div>
             </section>
           </>
         )}
 
-        {screen === "summary" && (
+        {screen === "summary" && usingApi && (
+          <ConversationSummaryPanel
+            title={title}
+            summary={conversation.summary}
+            busy={conversation.summaryBusy}
+            error={conversation.summaryError}
+            editing={editing}
+            editDraft={editDraft}
+            dirty={summaryDirty}
+            onBack={() => setScreen("chat")}
+            onEditDraft={setEditDraft}
+            onStartEdit={(draft) => {
+              setEditDraft(draft);
+              setEditing(true);
+            }}
+            onApplyEdit={() => {
+              setSummaryDirty(true);
+              setEditing(false);
+              trackNeed("summary_edited");
+            }}
+            onCancelEdit={() => setEditing(false)}
+            onRetry={() => {
+              setSummaryDirty(false);
+              setEditing(false);
+              void conversation.generateSummary().then((result) => {
+                if (result.fallback) {
+                  setDemoFallback(result.fallback);
+                  setScreen("chat");
+                }
+              });
+            }}
+            onRegenerate={() => {
+              setSummaryDirty(false);
+              setEditing(false);
+              void conversation.generateSummary().then((result) => {
+                if (result.fallback) {
+                  setDemoFallback(result.fallback);
+                  setScreen("chat");
+                }
+              });
+            }}
+            onDownload={downloadSummary}
+            onFinish={finish}
+          />
+        )}
+
+        {screen === "summary" && !usingApi && (
           <section className="nf-panel nf-summary-panel">
             <button className="nf-back" onClick={() => setScreen("chat")}>
               <Icon name="back" size={18} />
@@ -990,7 +1117,9 @@ export default function Home() {
                     title="이야기 정리 보기"
                     description="상황·감정·고민으로 나눈 예시를 살펴볼게요."
                     icon="note"
-                    onClick={openSummary}
+                    onClick={() => {
+                      void openSummary();
+                    }}
                   />
                 </>
               )}
@@ -1055,36 +1184,6 @@ export default function Home() {
           </section>
         )}
 
-        {screen === "quiet_done" && (
-          <section className="nf-panel nf-centered">
-            <Mio size={80} />
-            <p className="nf-eyebrow">대화를 마쳤어요</p>
-            {title("여기서 마칠게요.")}
-            <p className="nf-description">
-              더 답하거나 평가를 남기지 않아도 돼요.
-            </p>
-            {endCrisis ? (
-              <CrisisNotice crisis={endCrisis} ended />
-            ) : null}
-            {consentApi.retention ? (
-              <ConsentRetentionNotice retention={consentApi.retention} />
-            ) : null}
-            <ConsentWithdrawPanel
-              busy={consentApi.withdrawBusy}
-              error={consentApi.withdrawError}
-              withdrawal={consentApi.withdrawal}
-              deletion={consentApi.activeDeletion}
-              onWithdraw={requestWithdraw}
-              onRetryFailed={() => {
-                void consentApi.retryFailedDeletion();
-              }}
-            />
-            <button className="nf-text-button" onClick={home}>
-              홈으로
-            </button>
-          </section>
-        )}
-
         {screen === "done" && (
           <section className="nf-panel nf-centered nf-done">
             <Mio size={94} />
@@ -1096,15 +1195,34 @@ export default function Home() {
                 다음은 어떻게 할까요?
               </>,
             )}
+            <div className="nf-done-legal-actions">
+              <button
+                type="button"
+                onClick={() => retentionDialog.current?.showModal()}
+              >
+                보유기간 안내
+              </button>
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-controls="withdraw-dialog"
+                onClick={() => withdrawDialog.current?.showModal()}
+              >
+                동의 철회·삭제 요청
+              </button>
+            </div>
             <p className="nf-description">
               다른 도움이 필요해도, 지금 쓰는 방법으로 충분해도 괜찮아요.
             </p>
+            {endCrisis ? <CrisisNotice crisis={endCrisis} ended /> : null}
             <div className="nf-choice-list nf-followup-choices">
               <Choice
                 title="사용 경험 인터뷰에 관심 있어요"
                 description="필요했던 도움과 불편했던 점을 미오 팀에 이야기하고 싶어요."
                 icon="chat"
                 onClick={() => {
+                  window.clearTimeout(followupTimer.current);
+                  setFollowupWait(false);
                   setScreen("interest");
                   trackNeed("interest_opened");
                   trackNeed("interview_interest_selected");
@@ -1112,18 +1230,18 @@ export default function Home() {
               />
               {[
                 {
-                  id: "perspective",
+                  id: "perspective" as const,
                   title: "다른 관점이나 정보가 더 필요해요",
                   description: "이야기를 나누는 것만으로는 부족해요.",
                 },
                 {
-                  id: "existing",
+                  id: "existing" as const,
                   title: "지금 쓰는 방법으로 충분해요",
                   description:
                     "기존 AI, 메모, 주변 사람 등 다른 방법이 있어요.",
                 },
                 {
-                  id: "none",
+                  id: "none" as const,
                   title: "지금은 더 필요한 게 없어요",
                   description: "다음 선택 없이 여기서 마칠게요.",
                 },
@@ -1131,9 +1249,9 @@ export default function Home() {
                 <button
                   key={choice.id}
                   aria-pressed={followup === choice.id}
+                  disabled={followupWait}
                   onClick={() => {
-                    setFollowup(choice.id);
-                    trackNeed("followup_choice", { rating: choice.id });
+                    pickFollowup(choice.id);
                   }}
                 >
                   <span className="nf-icon-tile">
@@ -1147,27 +1265,25 @@ export default function Home() {
               ))}
             </div>
             {followup && (
-              <p className="nf-followup-response" role="status">
-                {followup === "existing"
-                  ? "지금 쓰는 방법이 충분하다는 선택도 중요해요. 알려줘서 고마워요."
-                  : followup === "perspective"
-                    ? "대화 외에 관점이나 정보가 필요하다는 뜻으로 남겼어요."
-                    : "여기서 마쳐도 괜찮아요. 알려줘서 고마워요."}
-              </p>
+              <div className="nf-followup-response" role="status">
+                {followup === "existing" ? (
+                  <>
+                    <p>지금 쓰는 방법이 충분하다는 선택도 충분해요.</p>
+                    <p>알려 줘서 고마워요.</p>
+                  </>
+                ) : followup === "perspective" ? (
+                  <p>대화 외에 관점이나 정보가 필요하다는 뜻으로 남겼어요.</p>
+                ) : (
+                  <p>여기서 마쳐도 괜찮아요. 알려줘서 고마워요.</p>
+                )}
+                {followupWait ? (
+                  <span className="nf-followup-wait">
+                    <span className="nf-followup-spinner" aria-hidden="true" />
+                    잠시만요
+                  </span>
+                ) : null}
+              </div>
             )}
-            {consentApi.retention ? (
-              <ConsentRetentionNotice retention={consentApi.retention} />
-            ) : null}
-            <ConsentWithdrawPanel
-              busy={consentApi.withdrawBusy}
-              error={consentApi.withdrawError}
-              withdrawal={consentApi.withdrawal}
-              deletion={consentApi.activeDeletion}
-              onWithdraw={requestWithdraw}
-              onRetryFailed={() => {
-                void consentApi.retryFailedDeletion();
-              }}
-            />
             <button className="nf-text-button" onClick={home}>
               선택 없이 홈으로
             </button>
@@ -1370,6 +1486,67 @@ export default function Home() {
               </button>
             ))}
           </div>
+        </div>
+      </dialog>
+      {/* 채팅 철회 모달 */}
+      <dialog
+        ref={withdrawDialog}
+        id="withdraw-dialog"
+        className="nf-dialog nf-dialog-withdraw"
+        aria-labelledby="withdraw-heading"
+        onClick={(event) => {
+          if (event.target === event.currentTarget)
+            withdrawDialog.current?.close();
+        }}
+      >
+        <div className="nf-dialog-body">
+          <button
+            className="nf-dialog-close"
+            onClick={() => withdrawDialog.current?.close()}
+            aria-label="닫기"
+          >
+            <Icon name="close" />
+          </button>
+          <ConsentWithdrawPanel
+            busy={consentApi.withdrawBusy}
+            error={consentApi.withdrawError}
+            withdrawal={consentApi.withdrawal}
+            deletion={consentApi.activeDeletion}
+            onWithdraw={requestWithdraw}
+            onRetryFailed={() => {
+              void consentApi.retryFailedDeletion();
+            }}
+          />
+        </div>
+      </dialog>
+      <dialog
+        ref={retentionDialog}
+        className="nf-dialog nf-dialog-withdraw"
+        aria-labelledby="retention-heading"
+        onClick={(event) => {
+          if (event.target === event.currentTarget)
+            retentionDialog.current?.close();
+        }}
+      >
+        <div className="nf-dialog-body">
+          <button
+            className="nf-dialog-close"
+            onClick={() => retentionDialog.current?.close()}
+            aria-label="닫기"
+          >
+            <Icon name="close" />
+          </button>
+          {consentApi.retention ? (
+            <ConsentRetentionNotice
+              retention={consentApi.retention}
+              variant="panel"
+            />
+          ) : (
+            <section className="nf-withdraw">
+              <h2 id="retention-heading">보유 기간 안내</h2>
+              <p>보유 기간 정보가 없어요</p>
+            </section>
+          )}
         </div>
       </dialog>
       <LiveObservationStub screen={screen} followUp={chatState} />
