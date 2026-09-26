@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   formatConversationSummaryText,
   isSummaryJudgeFailed,
@@ -8,6 +8,51 @@ import {
   type ConversationSummaryData,
 } from "@/lib/api/conversations";
 import { Icon, Primary } from "./need-ui";
+
+// 요약 로딩 문구
+const SUMMARY_LOADING_PHRASES = [
+  "대화를 수집하고 있어요",
+  "정리를 준비하고 있어요",
+  "대화를 정리하고 있어요",
+  "정리한 내용을 다듬고 있어요",
+  "정리한 내용을 준비하고 있어요",
+] as const;
+
+// 점 하나 추가 간격
+const SUMMARY_LOADING_DOT_MS = 500;
+
+// 점 0개부터 3개까지 단계 수
+const SUMMARY_LOADING_DOT_STEPS = 4;
+
+function SummaryLoadingStatus() {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    // 로딩 점 순환 타이머
+    const timer = window.setInterval(() => {
+      setStep((current) => current + 1);
+    }, SUMMARY_LOADING_DOT_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const phraseIndex =
+    Math.floor(step / SUMMARY_LOADING_DOT_STEPS) %
+    SUMMARY_LOADING_PHRASES.length;
+  const dotCount = step % SUMMARY_LOADING_DOT_STEPS;
+  const phrase = SUMMARY_LOADING_PHRASES[phraseIndex];
+
+  return (
+    <p className="nf-description">
+      <span className="sr-only" role="status">
+        {phrase}
+      </span>
+      <span aria-hidden="true">
+        {phrase}
+        <span className="nf-summary-loading-dots">{".".repeat(dotCount)}</span>
+      </span>
+    </p>
+  );
+}
 
 function SummarySections({ text }: { text: string }) {
   const sections = splitFormattedSummarySections(text);
@@ -82,7 +127,7 @@ export function ConversationSummaryPanel({
           나눠서 살펴볼까요?
         </>,
       )}
-      {busy ? <p className="nf-description">정리를 준비하고 있어요.</p> : null}
+      {busy ? <SummaryLoadingStatus /> : null}
       {error ? (
         <p className="nf-consent-error" role="status">
           {error}
