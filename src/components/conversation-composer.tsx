@@ -133,7 +133,11 @@ export function ConversationComposer({
     <div className="nf-mock-composer" ref={dock}>
       {trayVisible && hasTray && showTray && (
         <div
-          className="nf-composer-float"
+          className={
+            showOpeningExamples
+              ? "nf-composer-float nf-composer-float-above-prompts"
+              : "nf-composer-float"
+          }
           role="region"
           aria-label="대화 도구와 예시"
           onMouseDown={(event) => event.preventDefault()}
