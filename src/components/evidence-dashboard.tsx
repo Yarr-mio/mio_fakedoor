@@ -243,11 +243,6 @@ export function EvidenceDashboard({
             <h1>클릭 다음의 가치를<br />확인하는 대시보드</h1>
             <p>체험 전환과 실제 제품 근거를 분리해, 지금 판단할 수 있는 범위를 확인합니다.</p>
           </div>
-          <aside>
-            <span>현재 자동 판단</span>
-            <strong>PMF 판단 보류</strong>
-            <p>고정 목업 · 사용자 식별·리텐션 미연동<br />클릭과 화면 평가로 PMF를 확정하지 않습니다.</p>
-          </aside>
         </section>
         <nav className="dash-tabs" aria-label="대시보드 구역">
           <a href="#traffic">01 체험 전환</a>
@@ -473,11 +468,10 @@ export function EvidenceDashboard({
             {cohorts && <button onClick={() => { setCohorts(null); setCohortNotice(''); }}>불러온 집계 닫기</button>}
           </div>
           {cohortNotice && <p className="dash-warning">{cohortNotice}</p>}
-          {!cohorts && !cohortNotice && <p className="dash-empty">실사용 집계 미연동 · 리텐션은 UNKNOWN입니다.</p>}
+          {!cohorts && !cohortNotice && <p className="dash-empty">서버 코호트를 아직 불러오지 않았습니다.</p>}
           {cohorts && (
             <>
               <p>
-                <strong>집계 · 진위 미검증</strong><br />
                 기준: {cohorts.asOf} 00:00 KST 이전 / 핵심 행동: {cohorts.coreAction}<br />
                 출처: {cohorts.sourceRef}
               </p>

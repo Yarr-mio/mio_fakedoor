@@ -96,6 +96,7 @@ describe('admin token gate', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8');
     expect(source).not.toContain('admin-session');
     expect(source).not.toContain('/api/admin/session');
+    expect(source).not.toContain('idempotencyKey');
     expect(hasAdminAccessToken(unsetAdminTokenSource.getAccessToken())).toBe(false);
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -137,6 +138,21 @@ describe('admin metrics', () => {
       crisisFlowCount: 1,
       turnLimitCount: 3,
     })).toBe(true);
+  });
+
+  it('keeps a null inquiry ratio when live quality exists', () => {
+    const parsed = parseAdminMetricsData({
+      ...metricsData,
+      liveQuality: {
+        followUpMismatchRate: 0.04,
+        inquiryRatio: null,
+        replacedRate: 0.02,
+        crisisFlowCount: 1,
+        turnLimitCount: 3,
+      },
+    });
+    expect(parsed.liveQuality?.inquiryRatio).toBeNull();
+    expect(formatCoverageRate(parsed.liveQuality?.inquiryRatio ?? null)).toBe('측정 안 됨');
   });
 
   it('rejects inverted dates before fetch', async () => {
@@ -219,7 +235,7 @@ describe('admin safety and conversation', () => {
     })).toThrow(ApiError);
   });
 
-  it('keeps deferred conversation fields optional', () => {
+  it('drops deferred root fields and reads summary attributions', () => {
     const parsed = parseAdminConversationTrace({
       conversationId: '7f8b1c2d-1111-4111-8111-7f8b1c2d1111',
       mode: 'live',
@@ -227,9 +243,45 @@ describe('admin safety and conversation', () => {
       userTurns: 7,
       policyVersion: 'mio-dialogue-1.0',
       turns: [],
+      riskState: { level: 1 },
+      attributions: [{ type: 'emotion', value: '루트' }],
+      summary: {
+        summaryId: 'sum_4d2a',
+        judgeStatus: 'failed',
+        attributions: [
+          {
+            type: 'emotion',
+            value: '창피함',
+            evidenceMessageId: 'msg_in_abc',
+            nli: 'entailed',
+            kept: true,
+          },
+          {
+            type: 'emotion',
+            value: '분노',
+            evidenceMessageId: 'msg_in_abc',
+            nli: null,
+            judge: 'rejected',
+            kept: false,
+          },
+        ],
+        contractViolations: ['s3'],
+        modelId: 'model',
+        promptVersion: 'fd-summary-0.1',
+        latencyMs: 2310,
+        tokensIn: 880,
+        tokensOut: 140,
+        costKrw: 5.4,
+      },
     });
     expect(parsed).not.toHaveProperty('riskState');
     expect(parsed).not.toHaveProperty('attributions');
+    expect(parsed.summary?.judgeStatus).toBe('failed');
+    expect(parsed.summary?.contractViolations).toEqual(['s3']);
+    expect(parsed.summary?.attributions[0]).not.toHaveProperty('judge');
+    expect(parsed.summary?.attributions[1].nli).toBeNull();
+    expect(parsed.summary?.attributions[1].judge).toBe('rejected');
+    expect(parsed.summary?.attributions[1].kept).toBe(false);
   });
 
   it('fetches conversation traces without content fields', async () => {
@@ -260,6 +312,7 @@ describe('admin safety and conversation', () => {
     })));
     const result = await getAdminConversation('token-1', '7f8b1c2d-1111-4111-8111-7f8b1c2d1111');
     expect(result.data.turns[0]).not.toHaveProperty('content');
+    expect(result.data.summary).toBeNull();
   });
 
   it('disables cache on segment fetch and distinguishes auth errors', async () => {
@@ -286,22 +339,37 @@ describe('admin safety and conversation', () => {
     expect(adminErrorMessage(new ApiError({ code: 'UNAUTHORIZED', message: 'x' }), 'segment')).toBe('관리자 인증이 필요합니다');
     expect(adminErrorMessage(new ApiError({ code: 'FORBIDDEN', message: 'x' }), 'segment')).toBe('Safety 역할이 없어 원문에 접근할 수 없습니다');
     expect(adminErrorMessage(new ApiError({ code: 'GONE', message: 'x' }), 'segment')).toBe('삭제된 대화입니다');
+    expect(adminErrorMessage(new ApiError({ code: 'ADMIN_AUTH_NOT_CONFIGURED', message: 'x' }), 'metrics')).toBe('관리자 인증이 설정되지 않았습니다');
   });
 
   it('updates reviewedAt after a successful review', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
       success: true,
-      data: { reviewedAt: '2026-09-22T10:00:00Z' },
+      data: {
+        safetyEventId: 'se_01H',
+        reviewedAt: '2026-09-22T10:11:00Z',
+        action: 'false_positive',
+        retainUntil: '2026-12-21',
+      },
       meta: { traceId: '01REV' },
-    })));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
     const result = await reviewAdminSafetyEvent('token-1', 'se_01H', {
-      reviewedAt: '2026-09-22T10:00:00Z',
-      policyApplied: 'crisis-end',
-      actionResult: 'closed',
+      action: 'false_positive',
+      noteCode: 'context_misread',
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).has('Idempotency-Key')).toBe(false);
+    expect(JSON.parse(String(init.body))).toEqual({ action: 'false_positive', noteCode: 'context_misread' });
+    expect(result.data).toEqual({
+      safetyEventId: 'se_01H',
+      reviewedAt: '2026-09-22T10:11:00Z',
+      action: 'false_positive',
+      retainUntil: '2026-12-21',
     });
     const updated = applySafetyReview([
       { ...safetyEvent, kind: 'contract_violation', reviewedAt: null, categories: ['guaranteed_outcome'] },
     ], 'se_01H', result.data.reviewedAt);
-    expect(updated[0].reviewedAt).toBe('2026-09-22T10:00:00Z');
+    expect(updated[0].reviewedAt).toBe('2026-09-22T10:11:00Z');
   });
 });

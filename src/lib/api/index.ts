@@ -153,7 +153,10 @@ export {
   type AdminMetricsQuery,
   type AdminRole,
   type AdminSafetyEvent,
+  type AdminConversationSummary,
   type AdminSafetyReviewBody,
+  type AdminSafetyReviewResult,
+  type AdminSummaryAttribution,
   type AdminSafetySegment,
   type AdminTokenSource,
 } from "./admin";

@@ -1,7 +1,6 @@
 import { parseCohorts, type CohortReport } from '../retention-cohorts';
 import { dashboardMetrics } from '../dashboard-metrics';
 import { apiRequest, type ApiRequestOptions } from './client';
-import { createIdempotencyKey } from './headers';
 import { ApiError, ApiTransportError, isApiError } from './errors';
 import { isConversationState, isJsonRecord, isServerMode, type ApiSuccess, type ConversationState, type ServerMode } from './types';
 
@@ -61,7 +60,7 @@ export type AdminCoverage = {
 
 export type AdminLiveQuality = {
   followUpMismatchRate: number;
-  inquiryRatio: number;
+  inquiryRatio: number | null;
   replacedRate: number;
   crisisFlowCount: number;
   turnLimitCount: number;
@@ -126,6 +125,33 @@ export type AdminConversationTurn = {
   costKrw: number;
 };
 
+export const ADMIN_NLI_LABELS = ['entailed', 'neutral', 'contradicted'] as const;
+export type AdminNliLabel = (typeof ADMIN_NLI_LABELS)[number];
+export const ADMIN_JUDGE_DECISIONS = ['accepted', 'rejected'] as const;
+export type AdminJudgeDecision = (typeof ADMIN_JUDGE_DECISIONS)[number];
+
+export type AdminSummaryAttribution = {
+  type: string;
+  value: string;
+  evidenceMessageId: string;
+  nli: AdminNliLabel | null;
+  judge?: AdminJudgeDecision;
+  kept: boolean;
+};
+
+export type AdminConversationSummary = {
+  summaryId: string;
+  judgeStatus: string;
+  attributions: AdminSummaryAttribution[];
+  contractViolations: string[];
+  modelId: string;
+  promptVersion: string;
+  latencyMs: number;
+  tokensIn: number;
+  tokensOut: number;
+  costKrw: number;
+};
+
 export type AdminConversationTrace = {
   conversationId: string;
   mode: ServerMode;
@@ -133,8 +159,7 @@ export type AdminConversationTrace = {
   userTurns: number;
   policyVersion: string;
   turns: AdminConversationTurn[];
-  riskState?: unknown;
-  attributions?: unknown;
+  summary: AdminConversationSummary | null;
 };
 
 export type AdminSafetySegmentMessage = {
@@ -152,13 +177,28 @@ export type AdminSafetySegment = {
   segment: AdminSafetySegmentMessage[];
 };
 
+export const ADMIN_REVIEW_ACTIONS = ['confirmed', 'false_positive', 'no_action'] as const;
+export type AdminReviewAction = (typeof ADMIN_REVIEW_ACTIONS)[number];
+export const ADMIN_REVIEW_NOTE_CODES = [
+  'context_misread',
+  'keyword_bypass',
+  'user_requested_review',
+  'pattern_update_needed',
+  'other',
+] as const;
+export type AdminReviewNoteCode = (typeof ADMIN_REVIEW_NOTE_CODES)[number];
+
 export type AdminSafetyReviewBody = {
-  reviewedAt: string;
-  policyApplied: string;
-  actionResult: string;
+  action: AdminReviewAction;
+  noteCode?: AdminReviewNoteCode;
 };
 
-// 재검토 본문 필드명 미확정
+export type AdminSafetyReviewResult = {
+  safetyEventId: string;
+  reviewedAt: string;
+  action: AdminReviewAction;
+  retainUntil: string;
+};
 
 function parseFailure(field: string): never {
   throw new ApiError({ code: 'UNKNOWN', message: `관리자 응답 필드 오류 ${field}` });
@@ -284,7 +324,7 @@ function parseLiveQuality(value: unknown): AdminLiveQuality | null {
   if (!isJsonRecord(value)) return parseFailure('liveQuality');
   return {
     followUpMismatchRate: parseFinite(value.followUpMismatchRate, 'followUpMismatchRate'),
-    inquiryRatio: parseFinite(value.inquiryRatio, 'inquiryRatio'),
+    inquiryRatio: parseNullableRate(value.inquiryRatio, 'inquiryRatio'),
     replacedRate: parseFinite(value.replacedRate, 'replacedRate'),
     crisisFlowCount: parseInteger(value.crisisFlowCount, 'crisisFlowCount'),
     turnLimitCount: parseInteger(value.turnLimitCount, 'turnLimitCount'),
@@ -360,6 +400,62 @@ function parseTurnPlan(value: unknown, field: string): AdminTurnPlan {
   };
 }
 
+function isAdminNliLabel(value: unknown): value is AdminNliLabel {
+  return value === 'entailed' || value === 'neutral' || value === 'contradicted';
+}
+
+function isAdminJudgeDecision(value: unknown): value is AdminJudgeDecision {
+  return value === 'accepted' || value === 'rejected';
+}
+
+function isAdminReviewAction(value: unknown): value is AdminReviewAction {
+  return value === 'confirmed' || value === 'false_positive' || value === 'no_action';
+}
+
+function isAdminReviewNoteCode(value: unknown): value is AdminReviewNoteCode {
+  return (
+    value === 'context_misread' ||
+    value === 'keyword_bypass' ||
+    value === 'user_requested_review' ||
+    value === 'pattern_update_needed' ||
+    value === 'other'
+  );
+}
+
+function parseAttribution(value: unknown, field: string): AdminSummaryAttribution {
+  if (!isJsonRecord(value)) return parseFailure(field);
+  const attribution: AdminSummaryAttribution = {
+    type: parseText(value.type, `${field}type`),
+    value: parseText(value.value, `${field}value`),
+    evidenceMessageId: parseText(value.evidenceMessageId, `${field}evidenceMessageId`),
+    nli: value.nli === null ? null : isAdminNliLabel(value.nli) ? value.nli : parseFailure(`${field}nli`),
+    kept: typeof value.kept === 'boolean' ? value.kept : parseFailure(`${field}kept`),
+  };
+  if ('judge' in value) {
+    if (!isAdminJudgeDecision(value.judge)) return parseFailure(`${field}judge`);
+    attribution.judge = value.judge;
+  }
+  return attribution;
+}
+
+function parseConversationSummary(value: unknown): AdminConversationSummary | null {
+  if (value === null || value === undefined) return null;
+  if (!isJsonRecord(value)) return parseFailure('summary');
+  if (!Array.isArray(value.attributions)) return parseFailure('summaryAttributions');
+  return {
+    summaryId: parseText(value.summaryId, 'summaryId'),
+    judgeStatus: parseText(value.judgeStatus, 'judgeStatus'),
+    attributions: value.attributions.map((row, index) => parseAttribution(row, `summaryAttributions${index}`)),
+    contractViolations: parseStringList(value.contractViolations, 'summaryContractViolations'),
+    modelId: parseText(value.modelId, 'summaryModelId'),
+    promptVersion: parseText(value.promptVersion, 'summaryPromptVersion'),
+    latencyMs: parseInteger(value.latencyMs, 'summaryLatencyMs'),
+    tokensIn: parseInteger(value.tokensIn, 'summaryTokensIn'),
+    tokensOut: parseInteger(value.tokensOut, 'summaryTokensOut'),
+    costKrw: parseFinite(value.costKrw, 'summaryCostKrw'),
+  };
+}
+
 function parseConversationTurn(value: unknown, field: string): AdminConversationTurn {
   if (!isJsonRecord(value)) return parseFailure(field);
   if ('content' in value) return parseFailure(`${field}content`);
@@ -384,18 +480,15 @@ export function parseAdminConversationTrace(value: unknown): AdminConversationTr
   if (!isServerMode(value.mode)) return parseFailure('mode');
   if (!isConversationState(value.state)) return parseFailure('state');
   if (!Array.isArray(value.turns)) return parseFailure('turns');
-  const trace: AdminConversationTrace = {
+  return {
     conversationId: parseText(value.conversationId, 'conversationId'),
     mode: value.mode,
     state: value.state,
     userTurns: parseInteger(value.userTurns, 'userTurns'),
     policyVersion: parseText(value.policyVersion, 'policyVersion'),
     turns: value.turns.map((turn, index) => parseConversationTurn(turn, `turns${index}`)),
+    summary: parseConversationSummary(value.summary),
   };
-  // 누적 위험 감정 귀속 예약
-  if ('riskState' in value) trace.riskState = value.riskState;
-  if ('attributions' in value) trace.attributions = value.attributions;
-  return trace;
 }
 
 function parseSegmentMessage(value: unknown, field: string): AdminSafetySegmentMessage {
@@ -530,25 +623,43 @@ export async function getAdminSafetyEventSegment(token: string, safetyEventId: s
   }));
 }
 
+function parseAdminSafetyReview(value: unknown): AdminSafetyReviewResult {
+  if (!isJsonRecord(value)) return parseFailure('data');
+  if (!isAdminReviewAction(value.action)) return parseFailure('action');
+  const retainUntil = parseText(value.retainUntil, 'retainUntil');
+  if (!DATE.test(retainUntil)) return parseFailure('retainUntil');
+  return {
+    safetyEventId: parseText(value.safetyEventId, 'safetyEventId'),
+    reviewedAt: parseText(value.reviewedAt, 'reviewedAt'),
+    action: value.action,
+    retainUntil,
+  };
+}
+
 export async function reviewAdminSafetyEvent(
   token: string,
   safetyEventId: string,
   body: AdminSafetyReviewBody,
-): Promise<ApiSuccess<{ reviewedAt: string }>> {
+): Promise<ApiSuccess<AdminSafetyReviewResult>> {
   const id = safetyEventId.trim();
   if (!id) throw new ApiError({ code: 'VALIDATION_ERROR', message: 'safetyEventId 미지정' });
+  if (!isAdminReviewAction(body.action)) {
+    throw new ApiError({ code: 'VALIDATION_ERROR', message: 'action 값 오류' });
+  }
+  if (body.noteCode !== undefined && !isAdminReviewNoteCode(body.noteCode)) {
+    throw new ApiError({ code: 'VALIDATION_ERROR', message: 'noteCode 값 오류' });
+  }
+  const requestBody: AdminSafetyReviewBody = body.noteCode
+    ? { action: body.action, noteCode: body.noteCode }
+    : { action: body.action };
   return adminRequest<unknown>(token, {
     method: 'POST',
     path: `/v1/admin/safety-events/${encodeURIComponent(id)}/review`,
-    idempotencyKey: createIdempotencyKey(),
-    body,
-  }).then((result) => {
-    const reviewedAt =
-      isJsonRecord(result.data) && typeof result.data.reviewedAt === 'string' && result.data.reviewedAt.length > 0
-        ? result.data.reviewedAt
-        : body.reviewedAt;
-    return { ...result, data: { reviewedAt } };
-  });
+    body: requestBody,
+  }).then((result) => ({
+    ...result,
+    data: parseAdminSafetyReview(result.data),
+  }));
 }
 
 export type AdminApi = {
@@ -557,7 +668,7 @@ export type AdminApi = {
   getSafetyEvents: (query?: AdminSafetyEventsQuery) => Promise<ApiSuccess<AdminSafetyEventsPage>>;
   getConversation: (conversationId: string) => Promise<ApiSuccess<AdminConversationTrace>>;
   getSafetyEventSegment: (safetyEventId: string) => Promise<ApiSuccess<AdminSafetySegment>>;
-  reviewSafetyEvent: (safetyEventId: string, body: AdminSafetyReviewBody) => Promise<ApiSuccess<{ reviewedAt: string }>>;
+  reviewSafetyEvent: (safetyEventId: string, body: AdminSafetyReviewBody) => Promise<ApiSuccess<AdminSafetyReviewResult>>;
 };
 
 export function createAdminApi(tokenSource: AdminTokenSource): AdminApi {
@@ -623,6 +734,7 @@ export function adminErrorMessage(
   context: 'metrics' | 'cohorts' | 'safety' | 'conversation' | 'segment' | 'review',
 ): string {
   if (isApiError(error)) {
+    if (error.code === 'ADMIN_AUTH_NOT_CONFIGURED') return '관리자 인증이 설정되지 않았습니다';
     if (error.code === 'UNAUTHORIZED') return '관리자 인증이 필요합니다';
     if (error.code === 'FORBIDDEN') return 'Safety 역할이 없어 원문에 접근할 수 없습니다';
     if (error.code === 'GONE') return '삭제된 대화입니다';
