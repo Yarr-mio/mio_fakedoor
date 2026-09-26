@@ -9,12 +9,29 @@ import {
   formatJudgeStatus,
   formatSafetyKind,
   hasAdminAccessToken,
+  type AdminReviewAction,
+  type AdminReviewNoteCode,
   type AdminRole,
   type AdminSafetyEvent,
   type AdminSafetyKind,
+  type AdminSafetyReviewResult,
   type AdminSafetySegment,
   type AdminTokenSource,
 } from '@/lib/api/admin';
+
+const REVIEW_ACTION_LABELS: Record<AdminReviewAction, string> = {
+  confirmed: '실제 위기',
+  false_positive: '오탐',
+  no_action: '조치 없음',
+};
+
+const REVIEW_NOTE_LABELS: Record<AdminReviewNoteCode, string> = {
+  context_misread: '맥락 오독',
+  keyword_bypass: '변형 표기 우회',
+  user_requested_review: '이용자 재검토 요청',
+  pattern_update_needed: '패턴 갱신 필요',
+  other: '기타',
+};
 
 export function AdminSafetyQueue({
   tokenSource,
@@ -37,8 +54,9 @@ export function AdminSafetyQueue({
   const [segment, setSegment] = useState<AdminSafetySegment | null>(null);
   const [segmentError, setSegmentError] = useState('');
   const [reviewEventId, setReviewEventId] = useState('');
-  const [policyApplied, setPolicyApplied] = useState('');
-  const [actionResult, setActionResult] = useState('');
+  const [action, setAction] = useState<AdminReviewAction | ''>('');
+  const [noteCode, setNoteCode] = useState<AdminReviewNoteCode | ''>('');
+  const [reviewResult, setReviewResult] = useState<AdminSafetyReviewResult | null>(null);
 
   async function load(cursor?: string) {
     if (!hasAdminAccessToken(tokenSource.getAccessToken())) {
@@ -65,6 +83,8 @@ export function AdminSafetyQueue({
   async function openSegment(event: AdminSafetyEvent) {
     setSegment(null);
     setSegmentError('');
+    setReviewResult(null);
+    if (event.kind !== 'crisis') return;
     if (!canOpenSafetySegment(role)) {
       setSegmentError('Safety 역할만 원문 구간에 접근할 수 있습니다');
       return;
@@ -83,14 +103,13 @@ export function AdminSafetyQueue({
   }
 
   async function submitReview() {
-    if (!canOpenSafetySegment(role) || !reviewEventId) return;
+    if (!canOpenSafetySegment(role) || !reviewEventId || !action) return;
     try {
-      const reviewedAt = new Date().toISOString();
       const result = await api.reviewSafetyEvent(reviewEventId, {
-        reviewedAt,
-        policyApplied,
-        actionResult,
+        action,
+        ...(noteCode ? { noteCode } : {}),
       });
+      setReviewResult(result.data);
       setEvents((current) => applySafetyReview(current, reviewEventId, result.data.reviewedAt));
       setMessage('재검토 결과를 기록했습니다');
     } catch (error) {
@@ -156,7 +175,9 @@ export function AdminSafetyQueue({
                     <td>{formatJudgeStatus(event.judgeStatus)}</td>
                     <td>{event.followUpModel} → {event.followUpFinal}{event.replaced ? ' · 교체' : ''}</td>
                     <td>
-                      {event.contentAvailable ? (
+                      {event.kind !== 'crisis' ? (
+                        '원문 구간 없음'
+                      ) : event.contentAvailable ? (
                         canOpenSafetySegment(role) ? (
                           <button type="button" onClick={() => void openSegment(event)}>구간 열람</button>
                         ) : (
@@ -194,15 +215,34 @@ export function AdminSafetyQueue({
             {canOpenSafetySegment(role) && (
               <div className="dash-input-grid">
                 <label>
-                  적용 정책
-                  <input value={policyApplied} onChange={(e) => setPolicyApplied(e.target.value)} />
+                  조치
+                  <select value={action} onChange={(e) => setAction(e.target.value as AdminReviewAction | '')}>
+                    <option value="">선택</option>
+                    {(Object.keys(REVIEW_ACTION_LABELS) as AdminReviewAction[]).map((value) => (
+                      <option key={value} value={value}>{REVIEW_ACTION_LABELS[value]}</option>
+                    ))}
+                  </select>
                 </label>
                 <label>
-                  조치 결과
-                  <input value={actionResult} onChange={(e) => setActionResult(e.target.value)} />
+                  메모 코드
+                  <select value={noteCode} onChange={(e) => setNoteCode(e.target.value as AdminReviewNoteCode | '')}>
+                    <option value="">없음</option>
+                    {(Object.keys(REVIEW_NOTE_LABELS) as AdminReviewNoteCode[]).map((value) => (
+                      <option key={value} value={value}>{REVIEW_NOTE_LABELS[value]}</option>
+                    ))}
+                  </select>
                 </label>
-                <button type="button" onClick={() => void submitReview()}>재검토 기록</button>
+                <button type="button" disabled={!action} onClick={() => void submitReview()}>재검토 기록</button>
               </div>
+            )}
+            {reviewResult && (
+              <p>
+                기록 시각 {reviewResult.reviewedAt}
+                <br />
+                조치 {REVIEW_ACTION_LABELS[reviewResult.action]}
+                <br />
+                보관 기한 {reviewResult.retainUntil}
+              </p>
             )}
           </div>
         )}

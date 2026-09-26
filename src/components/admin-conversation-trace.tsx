@@ -4,10 +4,18 @@ import { useMemo, useState } from 'react';
 import {
   adminErrorMessage,
   createAdminApi,
+  formatJudgeStatus,
   hasAdminAccessToken,
   type AdminConversationTrace,
+  type AdminNliLabel,
   type AdminTokenSource,
 } from '@/lib/api/admin';
+
+const NLI_LABELS: Record<AdminNliLabel, string> = {
+  entailed: '성립',
+  neutral: '중립',
+  contradicted: '모순',
+};
 
 export function AdminConversationTracePanel({ tokenSource }: { tokenSource: AdminTokenSource }) {
   const api = useMemo(() => createAdminApi(tokenSource), [tokenSource]);
@@ -36,7 +44,7 @@ export function AdminConversationTracePanel({ tokenSource }: { tokenSource: Admi
         <span>06</span>
         <div>
           <h2>대화 판정 추적</h2>
-          <p>계약 검사와 후속 확정값만 봅니다. 이 응답에는 원문이 없습니다.</p>
+          <p>계약 검사와 정리 판정을 봅니다. 이 응답에는 원문이 없습니다.</p>
         </div>
       </div>
       <article className="dash-panel">
@@ -83,6 +91,43 @@ export function AdminConversationTracePanel({ tokenSource }: { tokenSource: Admi
                 </tbody>
               </table>
             </div>
+            <h3>정리 판정</h3>
+            {trace.summary === null ? (
+              <p className="dash-empty">정리가 없습니다.</p>
+            ) : (
+              <>
+                <p>
+                  {formatJudgeStatus(trace.summary.judgeStatus)} · {trace.summary.summaryId}
+                </p>
+                <p>계약 위반 {trace.summary.contractViolations.length > 0 ? trace.summary.contractViolations.join(', ') : '없음'}</p>
+                <div className="dash-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>유형</th>
+                        <th>값</th>
+                        <th>근거 메시지</th>
+                        <th>NLI</th>
+                        <th>판정</th>
+                        <th>채택</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trace.summary.attributions.map((item, index) => (
+                        <tr key={`${item.evidenceMessageId}-${index}`}>
+                          <td>{item.type}</td>
+                          <td>{item.value}</td>
+                          <td>{item.evidenceMessageId}</td>
+                          <td>{item.nli === null ? '검사 안 됨' : NLI_LABELS[item.nli]}</td>
+                          <td>{item.judge === 'accepted' ? '채택 판정' : item.judge === 'rejected' ? '거절 판정' : '호출 안 함'}</td>
+                          <td>{item.kept ? '채택' : '버림'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </>
         )}
       </article>
