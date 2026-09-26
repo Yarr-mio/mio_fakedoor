@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isMockMode } from "./config";
 import { apiRequest, apiRequestStream } from "./client";
-import { consumeConversationStream } from "./conversations";
+import {
+  consumeConversationStream,
+  parseSessionMetaEvent,
+} from "./conversations";
 import {
   resetMockApi,
   setMockForce,
@@ -76,6 +79,34 @@ describe("mock api switch", () => {
       events.push(block.event);
     });
     expect(events).toEqual(["session_meta", "delta", "delta", "done"]);
+  });
+
+  it("assigns a new message id on every turn", async () => {
+    await apiRequest({
+      method: "POST",
+      path: "/v1/conversations",
+      body: { need: "listen" },
+    });
+    const ids: string[] = [];
+    for (const content of ["첫 이야기", "두 번째 이야기"]) {
+      const response = await apiRequestStream({
+        method: "POST",
+        path: "/v1/conversations/7f8b1c2d-1111-4111-8111-7f8b1c2d1111/messages",
+        body: {
+          content,
+          source: "typed",
+          fixtureId: null,
+          stateVersion: 1,
+        },
+      });
+      await consumeConversationStream(response, async (block) => {
+        if (block.event !== "session_meta") return;
+        const meta = parseSessionMetaEvent(block.data);
+        ids.push(meta.messageId, meta.outMessageId);
+      });
+    }
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
   });
 
   it("applies mioMock scenario crisis through shared window state", async () => {

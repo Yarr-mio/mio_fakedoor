@@ -8,9 +8,24 @@ type SseKind = "ok" | "crisis" | "continue" | "error";
 const TRACE = "mocktrace01";
 const CONVERSATION_ID = "7f8b1c2d-1111-4111-8111-7f8b1c2d1111";
 const OPENING_ID = "msg_open_1";
-const USER_ID = "msg_in_abc";
-const OUT_ID = "msg_out_xyz";
 const SUMMARY_ID = "sum_4d2a";
+
+type TurnIds = { messageId: string; outMessageId: string };
+
+let messageSerial = 0;
+
+function nextMessageId(prefix: "in" | "out"): string {
+  messageSerial += 1;
+  return `msg_${prefix}_${messageSerial}`;
+}
+
+function createTurnIds(): TurnIds {
+  return {
+    messageId: nextMessageId("in"),
+    outMessageId: nextMessageId("out"),
+  };
+}
+
 const OPENING =
   "안녕하세요, 미오예요. 지금 어떤 이야기를 나누고 싶나요? 편한 만큼만 들려주세요.";
 
@@ -104,6 +119,7 @@ function resetMockFlags(): void {
 
 export function resetMockApi(): void {
   store = emptyStore();
+  messageSerial = 0;
   resetMockFlags();
 }
 
@@ -226,11 +242,19 @@ function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-function buildSseFrames(kind: SseKind): string[] {
+function latestMessageId(role: "user" | "mio"): string | null {
+  for (let index = store.messages.length - 1; index >= 0; index -= 1) {
+    const item = store.messages[index];
+    if (item?.role === role) return item.messageId;
+  }
+  return null;
+}
+
+function buildSseFrames(kind: SseKind, turn: TurnIds): string[] {
   const frames: string[] = [
     sseFrame("session_meta", {
-      messageId: USER_ID,
-      outMessageId: OUT_ID,
+      messageId: turn.messageId,
+      outMessageId: turn.outMessageId,
       receivedAt: isoNow(),
       conversationId: store.conversationId ?? CONVERSATION_ID,
       policyVersion: "mio-dialogue-1.0",
@@ -270,7 +294,7 @@ function buildSseFrames(kind: SseKind): string[] {
     );
     frames.push(
       sseFrame("done", {
-        msgId: OUT_ID,
+        msgId: turn.outMessageId,
         envelopeVersion: "0.1",
         state: "end",
         stateVersion: store.stateVersion + 1,
@@ -310,7 +334,7 @@ function buildSseFrames(kind: SseKind): string[] {
   if (kind === "error") {
     frames.push(
       sseFrame("done", {
-        msgId: OUT_ID,
+        msgId: turn.outMessageId,
         envelopeVersion: "0.1",
         state: store.state,
         stateVersion: store.stateVersion,
@@ -324,17 +348,17 @@ function buildSseFrames(kind: SseKind): string[] {
     return frames;
   }
   frames.push(
-    sseFrame("delta", { chunk: "어떤 말을 들었나요?", msgId: OUT_ID }),
+    sseFrame("delta", { chunk: "어떤 말을 들었나요?", msgId: turn.outMessageId }),
   );
   frames.push(
     sseFrame("delta", {
       chunk: " 말하기 불편한 부분은 빼고 들려줘도 돼요.",
-      msgId: OUT_ID,
+      msgId: turn.outMessageId,
     }),
   );
   frames.push(
     sseFrame("done", {
-      msgId: OUT_ID,
+      msgId: turn.outMessageId,
       envelopeVersion: "0.1",
       state: "offer",
       stateVersion: store.stateVersion + 1,
@@ -351,9 +375,10 @@ function buildSseFrames(kind: SseKind): string[] {
 export function createMockSseResponse(
   kind: SseKind,
   signal?: AbortSignal,
+  turn: TurnIds = createTurnIds(),
 ): Response {
   // mock SSE 순차 전달
-  const frames = buildSseFrames(kind);
+  const frames = buildSseFrames(kind, turn);
   const encoder = new TextEncoder();
   const gap = skipWait() ? 0 : 400;
   const stream = new ReadableStream<Uint8Array>({
@@ -533,7 +558,7 @@ function handleControl(body: unknown): MockJson {
     return success({
       state: store.state,
       stateVersion: store.stateVersion,
-      stoppedMessageId: OUT_ID,
+      stoppedMessageId: latestMessageId("mio") ?? nextMessageId("out"),
     });
   }
   if (action === "resume") {
@@ -584,7 +609,12 @@ function summaryPayload(judgeStatus: "ok" | "failed" | "skipped") {
       : "퇴근 후에도 팀장이 회의에서 한 말이 계속 떠오른다고 했어요.",
     expressedEmotions: failed
       ? []
-      : [{ label: "창피함", evidenceMessageId: USER_ID }],
+      : [
+          {
+            label: "창피함",
+            evidenceMessageId: latestMessageId("user") ?? nextMessageId("in"),
+          },
+        ],
     remainingConcerns: failed ? [] : ["내일 팀장을 다시 봐야 하는 상황"],
     judgeStatus,
     droppedAttributions: failed ? 0 : 1,
@@ -685,8 +715,9 @@ export function dispatchMockStream(
   const kind = fromText ?? flags.pendingStream;
   flags.pendingStream = "ok";
   store.inProgress = true;
+  const turn = createTurnIds();
   store.messages.push({
-    messageId: USER_ID,
+    messageId: turn.messageId,
     role: "user",
     source:
       isJsonRecord(body) && body.source === "fixture" ? "fixture" : "typed",
@@ -699,7 +730,7 @@ export function dispatchMockStream(
   store.stateVersion += 1;
   store.inProgress = false;
   store.messages.push({
-    messageId: OUT_ID,
+    messageId: turn.outMessageId,
     role: "mio",
     source: "model",
     content:
@@ -709,7 +740,7 @@ export function dispatchMockStream(
     status: kind === "error" ? "failed" : "complete",
     createdAt: isoNow(),
   });
-  return createMockSseResponse(kind, signal);
+  return createMockSseResponse(kind, signal, turn);
 }
 
 export function throwMockJsonError(result: MockJson): never {
