@@ -10,6 +10,7 @@ import {
   type ConsentDocumentCode,
   type ConsentRetention,
   type DeletionRecord,
+  type ServerMode,
   type WithdrawConsentData,
 } from "@/lib/api";
 
@@ -64,6 +65,7 @@ export function ConsentPanel({
   onCancel,
   busy = false,
   error,
+  mode = null,
 }: {
   value: ConsentSelection;
   onChange: (value: ConsentSelection) => void;
@@ -71,6 +73,7 @@ export function ConsentPanel({
   onCancel: () => void;
   busy?: boolean;
   error?: string | null;
+  mode?: ServerMode | null;
 }) {
   const [document, setDocument] = useState<LegalDocumentId>("terms");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -187,7 +190,7 @@ export function ConsentPanel({
             <Icon name="close" size={22} />
           </button>
         </div>
-        <LegalDocument document={document} />
+        <LegalDocument document={document} mode={mode} />
         <div className="nf-legal-end">
           <button onClick={() => dialog.current?.close()}>
             동의 화면으로 돌아가기

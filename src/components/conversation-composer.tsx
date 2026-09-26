@@ -1,27 +1,17 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import {
-  scenarioById,
-  nextScenarioTurn,
-  completedScenarioTurns,
-} from "@/lib/conversation-scenarios";
+import { CONVERSATION_SCENARIOS } from "@/lib/conversation-scenarios";
 import { TONE_EXAMPLES } from "@/lib/chat-mock";
-import type { Need } from "@/lib/need-flow";
-import type { ConversationState, ServerMode } from "@/lib/api";
-import type { ChatLine } from "@/lib/use-conversation-api";
+import type { ConversationState } from "@/lib/api";
 import { Icon } from "./need-ui";
 
 type ConversationComposerProps = {
-  need: Need;
-  mode: ServerMode | null;
   state: ConversationState;
   streaming: boolean;
   blocked: boolean;
   maxContentChars: number;
   suggestions: string[];
-  messages: ChatLine[];
-  scenarioId: string | null;
   error: string | null;
   onSend: (input: {
     content: string;
@@ -36,16 +26,21 @@ type ConversationComposerProps = {
   tools?: ReactNode;
 };
 
+function suggestionText(id: string): string | null {
+  for (const scenario of CONVERSATION_SCENARIOS) {
+    const turn = scenario.turns.find((entry) => entry.id === id);
+    if (turn) return turn.user;
+  }
+  const tone = TONE_EXAMPLES.find((example) => example.id === id);
+  return tone ? tone.user : null;
+}
+
 export function ConversationComposer({
-  need,
-  mode,
   state,
   streaming,
   blocked,
   maxContentChars,
   suggestions,
-  messages,
-  scenarioId,
   error,
   onSend,
   onStop,
@@ -59,70 +54,18 @@ export function ConversationComposer({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const [trayOpen, setTrayOpen] = useState(false);
-  const hasUserMessage = messages.some((message) => message.role === "user");
-  const scenario =
-    mode === "scripted_demo" ? scenarioById(scenarioId) : undefined;
-  const nextTurn =
-    mode === "scripted_demo"
-      ? nextScenarioTurn(
-          scenarioId,
-          messages.map((message) => ({
-            role: message.role,
-            text: message.content,
-            source:
-              message.source === "fixture"
-                ? "fixture"
-                : message.source === "typed"
-                  ? "typed"
-                  : "mock",
-            fixtureId: message.fixtureId,
-          })),
-        )
-      : undefined;
-  const completed =
-    mode === "scripted_demo"
-      ? completedScenarioTurns(
-          scenarioId,
-          messages.map((message) => ({
-            role: message.role,
-            text: message.content,
-            source:
-              message.source === "fixture"
-                ? "fixture"
-                : message.source === "typed"
-                  ? "typed"
-                  : "mock",
-            fixtureId: message.fixtureId,
-          })),
-        )
-      : 0;
   const offer = state === "offer";
   const ended = state === "end" || blocked;
+  const suggestionItems = suggestions.flatMap((id) => {
+    const text = suggestionText(id);
+    return text ? [{ id, text }] : [];
+  });
+  const showTray = offer && !streaming && !ended;
   const trayVisible = trayOpen && !ended;
-  const showExamples = offer && !streaming && !ended;
+  const hasTray = Boolean(tools) || suggestionItems.length > 0;
   const showInput = !ended;
-  const startersVisible = showExamples && !hasUserMessage && !scenario;
-  const scenarioVisible = Boolean(showExamples && scenario);
-  const suggestionTurns = suggestions
-    .map((id) => {
-      for (const item of scenario ? [scenario] : []) {
-        const turn = item.turns.find((entry) => entry.id === id);
-        if (turn) return turn;
-      }
-      return undefined;
-    })
-    .filter((item): item is NonNullable<typeof item> => Boolean(item));
-  const hasTray =
-    Boolean(tools) ||
-    startersVisible ||
-    scenarioVisible ||
-    suggestionTurns.length > 0;
   const busy = streaming;
   const sendDisabled = busy || ended || !draft.trim();
-  const starters =
-    need === "perspective"
-      ? [TONE_EXAMPLES[2], TONE_EXAMPLES[1], TONE_EXAMPLES[0]]
-      : [TONE_EXAMPLES[0], TONE_EXAMPLES[1], TONE_EXAMPLES[2]];
 
   function openTray() {
     if (hasTray) setTrayOpen(true);
@@ -148,7 +91,7 @@ export function ConversationComposer({
 
   return (
     <div className="nf-mock-composer" ref={dock}>
-      {trayVisible && hasTray && showExamples && (
+      {trayVisible && hasTray && showTray && (
         <div
           className="nf-composer-float"
           role="region"
@@ -156,63 +99,15 @@ export function ConversationComposer({
           onMouseDown={(event) => event.preventDefault()}
         >
           {tools}
-          {startersVisible && (
+          {suggestionItems.length > 0 && (
             <div className="nf-first-prompts">
-              <p>이런 이야기로 시작해볼까요?</p>
-              {starters.map((example) => (
+              {suggestionItems.map((item) => (
                 <button
-                  key={example.id}
+                  key={item.id}
                   disabled={busy}
-                  onClick={() => {
-                    setDraft(example.user);
-                    textarea.current?.focus();
-                  }}
+                  onClick={() => submit("fixture", item.text, item.id)}
                 >
-                  {example.user}
-                </button>
-              ))}
-            </div>
-          )}
-          {scenarioVisible && (
-            <div className="nf-scenario-current">
-              <div>
-                <strong>{scenario?.title}</strong>
-                <span>
-                  {completed} / {scenario?.turns.length} 대화
-                </span>
-              </div>
-              {nextTurn ? (
-                <button
-                  className="nf-scenario-next"
-                  disabled={busy}
-                  onClick={() => {
-                    setDraft(nextTurn.user);
-                    textarea.current?.focus();
-                  }}
-                >
-                  {completed ? "이어서 이야기하기" : "이 이야기로 시작하기"}
-                  <span>{nextTurn.user}</span>
-                </button>
-              ) : (
-                <p>
-                  이 예시는 여기까지예요. 마무리를 누르거나 다른 상황을 살펴볼
-                  수 있어요.
-                </p>
-              )}
-            </div>
-          )}
-          {suggestionTurns.length > 0 && (
-            <div className="nf-first-prompts">
-              {suggestionTurns.map((turn) => (
-                <button
-                  key={turn.id}
-                  disabled={busy}
-                  onClick={() => {
-                    setDraft(turn.user);
-                    textarea.current?.focus();
-                  }}
-                >
-                  {turn.user}
+                  {item.text}
                 </button>
               ))}
             </div>
@@ -263,15 +158,7 @@ export function ConversationComposer({
             className="nf-mock-input"
             onSubmit={(event) => {
               event.preventDefault();
-              const fixture =
-                TONE_EXAMPLES.find(
-                  (example) => example.user === draft.trim(),
-                ) ?? (nextTurn?.user === draft.trim() ? nextTurn : undefined);
-              submit(
-                fixture ? "fixture" : "typed",
-                draft,
-                fixture && "id" in fixture ? fixture.id : undefined,
-              );
+              submit("typed", draft);
             }}
           >
             <label className="sr-only" htmlFor="live-message">
@@ -290,7 +177,7 @@ export function ConversationComposer({
               placeholder={
                 state === "pause"
                   ? "이어서 말하고 싶으면 직접 입력해 주세요."
-                  : "예시를 고르거나 문장을 입력해 주세요."
+                  : "문장을 입력해 주세요."
               }
               onKeyDown={(event) => {
                 if (event.key === "Escape" && trayOpen) {
@@ -304,16 +191,7 @@ export function ConversationComposer({
                   !event.nativeEvent.isComposing
                 ) {
                   event.preventDefault();
-                  const fixture =
-                    TONE_EXAMPLES.find(
-                      (example) => example.user === draft.trim(),
-                    ) ??
-                    (nextTurn?.user === draft.trim() ? nextTurn : undefined);
-                  submit(
-                    fixture ? "fixture" : "typed",
-                    draft,
-                    fixture && "id" in fixture ? fixture.id : undefined,
-                  );
+                  submit("typed", draft);
                 }
               }}
             />
@@ -340,7 +218,7 @@ export function ConversationComposer({
           </p>
           {error && retryable && !busy ? (
             <button className="nf-mock-retry" type="button" onClick={onRetry}>
-              같은 요청으로 다시 보내기
+              다시 시도
             </button>
           ) : null}
         </>

@@ -148,7 +148,9 @@ export default function Home() {
     if (from === "chat") void conversation.cancelActiveStream();
     if (from !== "support") setReturnScreen(from);
     setScreen("support");
-    trackNeed("support_opened", { screen: from });
+    for (const resource of SUPPORT_RESOURCES) {
+      trackNeed("support_opened", { resource: resource.id });
+    }
   }
   function resetContent() {
     setResumedAt(-1);
@@ -166,11 +168,26 @@ export default function Home() {
     setEndCrisis(null);
     conversation.resetConversation();
   }
-  function begin(next: Need | null = null) {
-    trackNeed("entry_clicked", {
-      screen: "landing",
-      ...(next ? { need: next } : {}),
-    });
+  async function leaveConversationQuietly(): Promise<boolean> {
+    if (!conversation.conversationId) return true;
+    const ended = await conversation.finishConversation("quiet");
+    if (ended) trackNeed("conversation_ended_quietly");
+    return ended;
+  }
+  async function finishConversationExplicitly(): Promise<void> {
+    const crisisSnapshot = conversation.crisis;
+    if (conversation.conversationId) {
+      const ended = await conversation.finishConversation("user_end");
+      if (!ended) return;
+    }
+    resetContent();
+    if (crisisSnapshot) setEndCrisis(crisisSnapshot);
+    setScreen("done");
+  }
+  async function begin(next: Need | null = null) {
+    trackNeed("entry_clicked", { screen: "landing" });
+    const ended = await leaveConversationQuietly();
+    if (!ended) return;
     resetContent();
     consentApi.resetConsentSession();
     setPendingNeed(next);
@@ -194,12 +211,16 @@ export default function Home() {
       trackNeed("demo_started", { need: value });
       return;
     }
-    if (result.fallback) {
+    if (result.fallback === "config") {
       setDemoFallback(result.fallback);
       setMessages([{ role: "mio", text: openingFor(value) }]);
       setEventSurface("scripted_demo");
       setScreen("chat");
       trackNeed("demo_started", { need: value });
+      return;
+    }
+    if (result.fallback) {
+      setToast("실시간 응답이 잠시 제한되었어요");
       return;
     }
     setToast(result.error);
@@ -221,18 +242,19 @@ export default function Home() {
     withdrawDialog.current?.close();
     if (endsConversationOnWithdraw(documentCodes) && screen === "chat") {
       setStreamCancelToken((value) => value + 1);
-      void conversation.cancelActiveStream();
-      void endQuietly();
+      conversation.syncEndedLocally();
     }
   }
-  function selectScenario(id: string) {
+  async function selectScenario(id: string) {
     const scenario = scenarioById(id);
     if (!scenario) return;
+    const ended = await leaveConversationQuietly();
+    if (!ended) return;
     setScenarioRun((previous) => previous + 1);
     resetContent();
     setScenarioId(id);
     void enterChat(scenario.need, id);
-    trackNeed("scenario_selected", { resource: id, need: scenario.need });
+    trackNeed("scenario_selected", { resource: id });
   }
   function appendMockMessage(message: DemoMessage) {
     setMessages((previous) => [...previous, message]);
@@ -256,59 +278,51 @@ export default function Home() {
       setEditing(false);
       setScreen("summary");
       trackNeed("summary_opened", {
-        need,
         rating: hasFixture ? "selected_fixtures" : "default_sample",
       });
-      const result = await conversation.openOrCreateSummary();
-      if (result.fallback) {
-        setDemoFallback(result.fallback);
-        setScreen("chat");
-      }
+      await conversation.openOrCreateSummary();
       return;
     }
     if (!summaryDirty) setSummary(summaryOf(messages));
     setEditing(false);
     setScreen("summary");
     trackNeed("summary_opened", {
-      need,
       rating: hasFixture ? "selected_fixtures" : "default_sample",
     });
   }
-  async function endQuietly() {
-    const crisisSnapshot = conversation.crisis;
-    trackNeed("conversation_ended_quietly", { need });
-    if (usingApi) await conversation.finishConversation("quiet");
-    resetContent();
-    if (crisisSnapshot) setEndCrisis(crisisSnapshot);
-    setScreen("done");
-  }
   function finish() {
     if (chatState === "end") {
-      void endQuietly();
+      void finishConversationExplicitly();
       return;
     }
     void conversation.cancelActiveStream();
     setScreen("finish");
-    trackNeed("finish_opened", { screen });
+    trackNeed("finish_opened");
   }
-  function complete(withFeedback: boolean) {
+  async function complete(withFeedback: boolean) {
     if (withFeedback && !rating) return;
     trackNeed(
       withFeedback ? "feedback_submitted" : "feedback_skipped",
       withFeedback ? { rating } : {},
     );
     trackNeed("prototype_finished");
+    if (conversation.conversationId) {
+      const ended = await conversation.finishConversation("user_end");
+      if (!ended) return;
+    }
     resetContent();
     setScreen("done");
   }
-  function changeDirection(value: Need) {
+  async function changeDirection(value: Need) {
     dialog.current?.close();
     trackNeed("direction_changed", { need: value });
     if (value === "support") {
       openSupport(screen);
       return;
     }
-    if (usingApi) {
+    if (conversation.conversationId) {
+      const ended = await leaveConversationQuietly();
+      if (!ended) return;
       void enterChat(value);
       setToast("선택한 방향으로 새 대화를 시작해요.");
       return;
@@ -349,10 +363,13 @@ export default function Home() {
     window.clearTimeout(followupTimer.current);
     setFollowup("");
     setFollowupWait(false);
-    void conversation.cancelActiveStream();
-    resetContent();
-    consentApi.resetConsentSession();
-    setScreen("landing");
+    void (async () => {
+      const ended = await leaveConversationQuietly();
+      if (!ended) return;
+      resetContent();
+      consentApi.resetConsentSession();
+      setScreen("landing");
+    })();
   };
   function pickFollowup(id: "perspective" | "existing" | "none") {
     setFollowup(id);
@@ -545,6 +562,7 @@ export default function Home() {
               onCancel={home}
               busy={consentApi.recordBusy}
               error={consentApi.recordError}
+              mode={conversation.mode}
             />
           </div>
         )}
@@ -676,6 +694,7 @@ export default function Home() {
                           : (message.source ?? "typed"),
                       content: message.text,
                       status: "complete" as const,
+                      crisisFixed: false,
                     }))
                 ).map((message) => (
                   <div
@@ -693,7 +712,9 @@ export default function Home() {
                       {message.status === "failed" ? (
                         <small>보내지 못했어요</small>
                       ) : null}
-                      {message.role === "mio" && message.source === "model" ? (
+                      {message.role === "mio" &&
+                      message.source === "model" &&
+                      !message.crisisFixed ? (
                         <small>AI 생성</small>
                       ) : null}
                     </div>
@@ -721,21 +742,15 @@ export default function Home() {
               <div className="nf-chat-controls">
                 {usingApi ? (
                   <ConversationComposer
-                    need={need}
-                    mode={conversation.mode}
                     state={conversation.state}
                     streaming={conversation.streaming}
                     blocked={conversation.blocked || conversation.deleted}
                     maxContentChars={conversation.limits.maxContentChars}
                     suggestions={conversation.suggestions}
-                    messages={conversation.messages}
-                    scenarioId={scenarioId}
                     error={conversation.error}
                     retryable={conversation.retryable}
                     onSend={(input) => {
-                      void conversation.send(input).then((result) => {
-                        if (result.fallback) setDemoFallback(result.fallback);
-                      });
+                      void conversation.send(input);
                     }}
                     onStop={() => {
                       void conversation.stopListening();
@@ -744,7 +759,7 @@ export default function Home() {
                       void conversation.resumeTalking();
                     }}
                     onEnd={() => {
-                      void endQuietly();
+                      void finishConversationExplicitly();
                     }}
                     onRetry={() => {
                       void conversation.retryLast();
@@ -805,7 +820,7 @@ export default function Home() {
                     followUp={followUp}
                     onResume={() => setResumedAt(messages.length)}
                     onEnd={() => {
-                      void endQuietly();
+                      void finishConversationExplicitly();
                     }}
                     onMessage={appendMockMessage}
                     onPreview={setMockPreview}
@@ -887,22 +902,12 @@ export default function Home() {
             onRetry={() => {
               setSummaryDirty(false);
               setEditing(false);
-              void conversation.generateSummary().then((result) => {
-                if (result.fallback) {
-                  setDemoFallback(result.fallback);
-                  setScreen("chat");
-                }
-              });
+              void conversation.generateSummary();
             }}
             onRegenerate={() => {
               setSummaryDirty(false);
               setEditing(false);
-              void conversation.generateSummary().then((result) => {
-                if (result.fallback) {
-                  setDemoFallback(result.fallback);
-                  setScreen("chat");
-                }
-              });
+              void conversation.generateSummary();
             }}
             onDownload={downloadSummary}
             onFinish={finish}
@@ -1177,7 +1182,9 @@ export default function Home() {
             <Primary onClick={() => complete(true)} disabled={!rating}>
               의견 남기고 마치기
             </Primary>
-            <p className="nf-fine">선택 응답은 이 브라우저에만 보관돼요.</p>
+            <p className="nf-fine">
+              선택한 응답은 이 브라우저에 남고, 이용 기록으로 서버에도 전송돼요.
+            </p>
             <button className="nf-text-button" onClick={() => complete(false)}>
               건너뛰고 마칠게요
             </button>
@@ -1418,19 +1425,20 @@ export default function Home() {
                 진단·치료, 긴급 구조를 대신하지 않아요.
               </p>
               <p>
-                현재는 준비된 답변을 보여드려요. 입력한 내용을 이해하고 답하는
-                실제 AI 대화는 아직 제공하지 않아요.
+                {conversation.mode === "live"
+                  ? "입력한 이야기는 대화 서버로 전송되고, 서버의 AI가 이어서 응답해요. 실시간 상담사 연결은 없어요."
+                  : "지금은 준비된 답변을 보여드려요. 입력한 이야기는 대화 서버로 전송돼요."}
               </p>
               <details className="nf-consent-details">
                 <summary>내 정보는 어떻게 다루나요?</summary>
                 <p>
-                  입력한 이야기는 현재 화면에서만 사용하며 서버에 보내지 않아요.
-                  처음으로 돌아가거나 대화를 종료·새로고침하면 지워져요. 직접
+                  입력한 이야기와 응답은 대화 서버로 전송되어 저장돼요. 삭제
+                  요청이나 동의 철회 뒤 서버의 삭제 절차로 지워져요. 직접
                   내려받은 파일은 기기에 남아요.
                 </p>
                 <p>
-                  버튼 선택 등 이용 기록은 이 브라우저에 남아요. 대화 원문은
-                  포함하지 않아요.
+                  버튼 선택 등 이용 기록은 이 브라우저에 남고, 이벤트 서버로도
+                  전송돼요. 그 기록에는 대화 원문을 넣지 않아요.
                 </p>
               </details>
               <button
