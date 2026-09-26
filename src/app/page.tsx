@@ -1090,10 +1090,12 @@ export default function Home() {
               <br />이 체험은 응급 상황에 대응하거나 사람에게 실시간 연결하는
               서비스가 아닙니다.
             </p>
-            <button className="nf-secondary" onClick={finish}>
-              여기서 마무리하기
-              <Icon name="arrow" size={18} />
-            </button>
+            {returnScreen === "done" && (
+              <button className="nf-secondary" onClick={home}>
+                홈화면으로 돌아가기
+                <Icon name="arrow" size={18} />
+              </button>
+            )}
           </section>
         )}
 
