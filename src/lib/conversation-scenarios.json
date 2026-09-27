@@ -3,7 +3,7 @@
     "id": "after_work",
     "title": "퇴근해도 일이 머릿속에 남을 때",
     "need": "listen",
-    "description": "해결책보다 누군가에게 말하고 싶은 저녁",
+    "description": "해결책보다 누군가에게 말하고 싶은 저녁.",
     "outcome": "부분적 도움: 말할 부담은 줄지만 상황은 그대로",
     "turns": [
       {
@@ -64,7 +64,7 @@
     "id": "too_many_tasks",
     "title": "무엇부터 해야 할지 막막할 때",
     "need": "organize",
-    "description": "감정적인 위로보다 상황 구분을 원하는 순간",
+    "description": "감정적인 위로보다 상황 구분을 원하는 순간.",
     "outcome": "실용적 도움 후보: 정리했지만 실제 실행은 미확인",
     "turns": [
       {
@@ -125,7 +125,7 @@
     "id": "late_reply",
     "title": "답장이 늦어 여러 생각이 들 때",
     "need": "perspective",
-    "description": "감정은 듣되 상대방의 의도를 단정하지 않는 대화",
+    "description": "감정은 듣되 상대방의 의도를 단정하지 않는 대화.",
     "outcome": "부분적 도움: 단정은 줄었으나 불안은 남음",
     "turns": [
       {
@@ -186,7 +186,7 @@
     "id": "correct_me",
     "title": "내 말을 잘못 이해했을 때",
     "need": "listen",
-    "description": "AI의 해석을 사용자가 수정하고 도움의 방향을 바꾸는 대화",
+    "description": "AI의 해석을 사용자가 수정하고 도움의 방향을 바꾸는 대화.",
     "outcome": "수정 후 제한적 도움: 이해받았다는 응답만 확인",
     "turns": [
       {
@@ -247,7 +247,7 @@
     "id": "not_helping",
     "title": "좋은 말인데 도움이 안 될 때",
     "need": "perspective",
-    "description": "공감 표현만으로 충분하지 않은 사례",
+    "description": "공감 표현만으로 충분하지 않은 사례.",
     "outcome": "도움 없음: 구체적 판단에 필요한 정보 부족",
     "turns": [
       {
@@ -308,7 +308,7 @@
     "id": "too_much",
     "title": "이야기할수록 더 힘들 때",
     "need": "listen",
-    "description": "말하기·질문·정리를 중단하고 싶은 사례",
+    "description": "말하기·질문·정리를 중단하고 싶은 사례.",
     "outcome": "부정 경험과 중단: 추가 자기노출을 유도하지 않음",
     "turns": [
       {
@@ -369,7 +369,7 @@
     "id": "professional_help",
     "title": "전문 상담을 받아야 할지 고민될 때",
     "need": "perspective",
-    "description": "AI의 한계를 알리고 원하는 만큼 준비를 돕는 대화",
+    "description": "AI의 한계를 알리고 원하는 만큼 준비를 돕는 대화.",
     "outcome": "정보 탐색 선택: 상담 이용·예약은 미확인",
     "turns": [
       {
@@ -430,7 +430,7 @@
     "id": "existing_method",
     "title": "기존 방법이 더 잘 맞을 때",
     "need": "listen",
-    "description": "새 제품이 필요 없다는 선택도 존중하는 대화",
+    "description": "새 제품이 필요 없다는 선택도 존중하는 대화.",
     "outcome": "대안 충분: Mio 필요와 재사용을 가정하지 않음",
     "turns": [
       {

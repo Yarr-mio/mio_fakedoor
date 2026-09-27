@@ -2,8 +2,6 @@
 
 현재 인수인계 브랜치는 `codex/fakedoor-need-flow`, PR 대상은 `main`이다. 기본 브랜치를 직접 갱신하지 않고 초안 PR에서 화면·대사·연동 범위를 함께 검토한다. 별도 장기 `develop` 브랜치는 두지 않는다.
 
-관리자 대시보드·인증 후속 작업은 `codex/dashboard-evidence-auth`에서 진행하며, 기반 PR #1이 아직 미병합이므로 PR 대상은 `codex/fakedoor-need-flow`다. 기반 PR 병합 후 main으로 대상을 변경하고 차이를 재확인한다. 정적 배포에서 서버 배포로 바뀌는 부분은 별도로 검토한다.
-
 1. 이번 초안 PR에서 FE·BE가 README와 대화 정책을 확인하고 로컬 실행으로 기대 동작을 공유한다.
 2. 검토가 끝나면 PR을 리뷰 가능 상태로 전환하고 검증 후 main에 병합한다. 이번 게시 작업은 병합이나 배포를 포함하지 않는다.
 3. 이후 최신 main에서 작은 작업 브랜치를 만든다. 예: `codex/fe-chat-api`, `codex/be-consent`, `codex/be-llm-dialogue`.
