@@ -52,6 +52,7 @@ export class ApiError extends Error {
   readonly traceId: string | null;
   readonly httpStatus: number | null;
   readonly rateLimit: RateLimitInfo | null;
+  readonly retryAfterSeconds: number | null;
   readonly deferred: boolean;
   readonly rawCode: string | null;
 
@@ -62,6 +63,7 @@ export class ApiError extends Error {
     traceId?: string | null;
     httpStatus?: number | null;
     rateLimit?: RateLimitInfo | null;
+    retryAfterSeconds?: number | null;
     rawCode?: string | null;
   }) {
     super(init.message);
@@ -71,6 +73,7 @@ export class ApiError extends Error {
     this.traceId = init.traceId ?? null;
     this.httpStatus = init.httpStatus ?? null;
     this.rateLimit = init.rateLimit ?? null;
+    this.retryAfterSeconds = init.retryAfterSeconds ?? null;
     this.rawCode = init.rawCode ?? (init.code === 'UNKNOWN' ? null : init.code);
     this.deferred = isDeferredErrorCode(init.code);
   }

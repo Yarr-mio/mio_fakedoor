@@ -29,4 +29,7 @@ export function cohortTotals(report:CohortReport) {
     return {period,denominator:rows.reduce((n,row)=>n+row.size,0),retained:rows.reduce((n,row)=>n+(row.retained[period] as number),0)};
   });
 }
-export const COHORT_TEMPLATE: CohortReport = {version:'mio-cohort-v1',mode:'live_aggregate',timezone:'Asia/Seoul',asOf:'2026-09-14',coreAction:'실측 핵심 행동 정의로 교체',sourceRef:'실측 집계 출처 ID로 교체',teamExcluded:true,cohorts:[]};
+/** Opaque server code. Display copy is ADMIN_CORE_ACTION_LABEL, not this string. */
+export const ADMIN_CORE_ACTION = 'live_typed_message_sent';
+export const ADMIN_CORE_ACTION_LABEL = '직접 입력한 메시지 전송';
+export const COHORT_TEMPLATE: CohortReport = {version:'mio-cohort-v1',mode:'live_aggregate',timezone:'Asia/Seoul',asOf:'2026-09-14',coreAction:ADMIN_CORE_ACTION,sourceRef:'실측 집계 출처 ID로 교체',teamExcluded:true,cohorts:[]};
