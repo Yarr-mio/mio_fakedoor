@@ -1,40 +1,55 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
   adminErrorMessage,
   createAdminApi,
   formatJudgeStatus,
   hasAdminAccessToken,
+  resolveAdminAccessToken,
   type AdminConversationTrace,
   type AdminNliLabel,
   type AdminTokenSource,
-} from '@/lib/api/admin';
+} from "@/lib/api/admin";
+import { handleAdminUnauthorized } from "@/lib/admin-api-key";
 
 const NLI_LABELS: Record<AdminNliLabel, string> = {
-  entailed: '성립',
-  neutral: '중립',
-  contradicted: '모순',
+  entailed: "성립",
+  neutral: "중립",
+  contradicted: "모순",
 };
 
-export function AdminConversationTracePanel({ tokenSource }: { tokenSource: AdminTokenSource }) {
+export function AdminConversationTracePanel({
+  tokenSource,
+  onUnauthorized,
+}: {
+  tokenSource: AdminTokenSource;
+  onUnauthorized?: (message: string) => void;
+}) {
   const api = useMemo(() => createAdminApi(tokenSource), [tokenSource]);
-  const [conversationId, setConversationId] = useState('');
+  const [conversationId, setConversationId] = useState("");
   const [trace, setTrace] = useState<AdminConversationTrace | null>(null);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
 
   async function load() {
     setTrace(null);
-    if (!hasAdminAccessToken(tokenSource.getAccessToken())) {
-      setMessage('관리자 토큰이 없어 서버 조회를 건너뜁니다');
+    if (!hasAdminAccessToken(await resolveAdminAccessToken(tokenSource))) {
+      setMessage(
+        "이 탭에 접근 키가 없습니다. 다시 로그인하면 서버 조회에 그 키를 사용합니다",
+      );
       return;
     }
     try {
       const result = await api.getConversation(conversationId);
       setTrace(result.data);
-      setMessage('');
+      setMessage("");
     } catch (error) {
-      setMessage(adminErrorMessage(error, 'conversation'));
+      const unauthorized = handleAdminUnauthorized(error, "conversation");
+      if (unauthorized !== null) {
+        onUnauthorized?.(unauthorized);
+        return;
+      }
+      setMessage(adminErrorMessage(error, "conversation"));
     }
   }
 
@@ -44,24 +59,37 @@ export function AdminConversationTracePanel({ tokenSource }: { tokenSource: Admi
         <span>06</span>
         <div>
           <h2>대화 판정 추적</h2>
-          <p>계약 검사와 정리 판정을 봅니다. 이 응답에는 원문이 없습니다.</p>
+          <p>
+            계약 검사와 정리 판정을 봅니다. 원문은 없습니다. 삭제된 대화도 판정
+            기록은 그대로 보이고, 정리가 지워졌으면 정리는 비어 있습니다.
+          </p>
         </div>
       </div>
       <article className="dash-panel">
         <div className="dash-filters">
           <label>
             대화 ID
-            <input value={conversationId} onChange={(e) => setConversationId(e.target.value)} />
+            <input
+              value={conversationId}
+              onChange={(e) => setConversationId(e.target.value)}
+            />
           </label>
-          <button type="button" onClick={() => void load()}>추적 불러오기</button>
+          <button type="button" onClick={() => void load()}>
+            추적 불러오기
+          </button>
         </div>
-        <p className="dash-status" role="status">{message}</p>
+        <p className="dash-status" role="status">
+          {message}
+        </p>
         {!trace ? (
-          <p className="dash-empty">viewer 이상 조회입니다. 원문 필드를 요청하거나 표시하지 않습니다.</p>
+          <p className="dash-empty">
+            viewer 이상 조회입니다. 원문 필드를 요청하거나 표시하지 않습니다.
+          </p>
         ) : (
           <>
             <p>
-              {trace.conversationId} · {trace.mode} · {trace.state} · 사용자 턴 {trace.userTurns} · {trace.policyVersion}
+              {trace.conversationId} · {trace.mode} · {trace.state} · 사용자 턴{" "}
+              {trace.userTurns} · {trace.policyVersion}
             </p>
             <div className="dash-table-wrap">
               <table>
@@ -83,7 +111,7 @@ export function AdminConversationTracePanel({ tokenSource }: { tokenSource: Admi
                       <td>{turn.responseAct}</td>
                       <td>{turn.followUpModel}</td>
                       <td>{turn.followUpFinal}</td>
-                      <td>{turn.contractViolations.join(', ') || '없음'}</td>
+                      <td>{turn.contractViolations.join(", ") || "없음"}</td>
                       <td>{turn.latencyMs}</td>
                       <td>{turn.costKrw}</td>
                     </tr>
@@ -97,9 +125,15 @@ export function AdminConversationTracePanel({ tokenSource }: { tokenSource: Admi
             ) : (
               <>
                 <p>
-                  {formatJudgeStatus(trace.summary.judgeStatus)} · {trace.summary.summaryId}
+                  {formatJudgeStatus(trace.summary.judgeStatus)} ·{" "}
+                  {trace.summary.summaryId}
                 </p>
-                <p>계약 위반 {trace.summary.contractViolations.length > 0 ? trace.summary.contractViolations.join(', ') : '없음'}</p>
+                <p>
+                  계약 위반{" "}
+                  {trace.summary.contractViolations.length > 0
+                    ? trace.summary.contractViolations.join(", ")
+                    : "없음"}
+                </p>
                 <div className="dash-table-wrap">
                   <table>
                     <thead>
@@ -118,9 +152,19 @@ export function AdminConversationTracePanel({ tokenSource }: { tokenSource: Admi
                           <td>{item.type}</td>
                           <td>{item.value}</td>
                           <td>{item.evidenceMessageId}</td>
-                          <td>{item.nli === null ? '검사 안 됨' : NLI_LABELS[item.nli]}</td>
-                          <td>{item.judge === 'accepted' ? '채택 판정' : item.judge === 'rejected' ? '거절 판정' : '호출 안 함'}</td>
-                          <td>{item.kept ? '채택' : '버림'}</td>
+                          <td>
+                            {item.nli === null
+                              ? "검사 안 됨"
+                              : NLI_LABELS[item.nli]}
+                          </td>
+                          <td>
+                            {item.judge === "accepted"
+                              ? "채택 판정"
+                              : item.judge === "rejected"
+                                ? "거절 판정"
+                                : "호출 안 함"}
+                          </td>
+                          <td>{item.kept ? "채택" : "버림"}</td>
                         </tr>
                       ))}
                     </tbody>
