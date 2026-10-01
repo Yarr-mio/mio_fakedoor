@@ -1,3 +1,4 @@
+import { optionalAdminAuthorization } from '@/lib/admin-api-key';
 import { apiRequest } from './client';
 import { ApiError } from './errors';
 import {
@@ -94,14 +95,23 @@ export function startVisit(input: StartVisitRequest): Promise<ApiSuccess<StartVi
   // 방문 시작 쿠키 미발급
   const channel = sanitizeChannel(input.channel);
   const body: StartVisitRequest = channel ? { journeyId: input.journeyId, channel } : { journeyId: input.journeyId };
-  return apiRequest<unknown>({ method: 'POST', path: '/v1/visit', body }).then((result) => ({
+  return apiRequest<unknown>({
+    method: 'POST',
+    path: '/v1/visit',
+    body,
+    authorization: optionalAdminAuthorization(),
+  }).then((result) => ({
     ...result,
     data: parseStartVisitData(result.data),
   }));
 }
 
 export function getVisit(): Promise<ApiSuccess<VisitStatusData>> {
-  return apiRequest<unknown>({ method: 'GET', path: '/v1/visit' }).then((result) => ({
+  return apiRequest<unknown>({
+    method: 'GET',
+    path: '/v1/visit',
+    authorization: optionalAdminAuthorization(),
+  }).then((result) => ({
     ...result,
     data: parseVisitStatusData(result.data),
   }));

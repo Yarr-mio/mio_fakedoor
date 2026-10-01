@@ -85,6 +85,7 @@ function throwApiError(
   body: unknown,
   httpStatus: number,
   rateLimit: RateLimitInfo | null,
+  retryAfterSeconds: number | null = null,
 ): never {
   const errorBody =
     isJsonRecord(body) && isJsonRecord(body.error) ? body.error : null;
@@ -100,6 +101,7 @@ function throwApiError(
     traceId: parseTraceId(errorBody?.traceId),
     httpStatus,
     rateLimit,
+    retryAfterSeconds,
     rawCode,
   });
 }
@@ -193,7 +195,7 @@ export async function apiRequest<T>(
       retryAfterSeconds,
     );
   }
-  throwApiError(body, response.status, rateLimit);
+  throwApiError(body, response.status, rateLimit, retryAfterSeconds);
 }
 
 export async function apiRequestStream(
