@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useInternalMode } from "@/lib/use-internal-mode";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   NEEDS,
   SUPPORT_RESOURCES,
@@ -32,6 +32,7 @@ import { MockChatComposer } from "@/components/mock-chat-composer";
 import { ConversationComposer } from "@/components/conversation-composer";
 import { CrisisNotice } from "@/components/crisis-notice";
 import { ConversationSummaryPanel } from "@/components/conversation-summary-panel";
+import { TypedMioText } from "@/components/typed-mio-text";
 import {
   endsConversationOnWithdraw,
   type ConsentDocumentCode,
@@ -45,6 +46,7 @@ import {
   type DemoFallbackReason,
 } from "@/lib/use-conversation-api";
 import { liveOpeningExamples } from "@/lib/live-opening-examples";
+import { chatLogPinned } from "@/lib/use-typewriter-queue";
 import "./prototype.css";
 
 export default function Home() {
@@ -104,6 +106,42 @@ export default function Home() {
   const heading = useRef<HTMLHeadingElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const viewed = useRef(false);
+  const logPinRef = useRef(true);
+  const logCountRef = useRef(0);
+  const logStickRef = useRef(false);
+  const wasChatRef = useRef(false);
+  const typingHoldIdRef = useRef<string | null>(null);
+  const [typingHold, setTypingHold] = useState(false);
+  const typingCancelled =
+    conversation.state === "end" ||
+    conversation.blocked ||
+    conversation.deleted;
+  const latestMioId = usingApi
+    ? conversation.messages.reduce<string | null>(
+        (found, message) =>
+          message.role === "mio" ? message.messageId : found,
+        null,
+      )
+    : null;
+  const onTypingPending = useCallback((id: string, pending: boolean) => {
+    if (pending) {
+      typingHoldIdRef.current = id;
+      setTypingHold(true);
+      return;
+    }
+    if (typingHoldIdRef.current !== id) return;
+    typingHoldIdRef.current = null;
+    setTypingHold(false);
+  }, []);
+  const stickLog = useCallback(() => {
+    const node = log.current;
+    if (!node || !logPinRef.current) return;
+    logStickRef.current = true;
+    node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
+    window.requestAnimationFrame(() => {
+      logStickRef.current = false;
+    });
+  }, []);
 
   useEffect(() => {
     setEventSurface("scripted_demo");
@@ -124,18 +162,39 @@ export default function Home() {
     heading.current?.focus();
     window.scrollTo({ top: 0 });
   }, [screen]);
+  function onLogScroll() {
+    if (logStickRef.current) return;
+    const node = log.current;
+    if (!node) return;
+    logPinRef.current = chatLogPinned(node);
+  }
   useEffect(() => {
-    if (screen === "chat")
-      log.current?.scrollTo({
-        top: log.current.scrollHeight,
-        behavior: "auto",
-      });
+    const node = log.current;
+    const enteredChat = screen === "chat" && !wasChatRef.current;
+    wasChatRef.current = screen === "chat";
+    if (screen !== "chat" || !node) return;
+    // 위로 스크롤한 로그는 위치 유지
+    if (enteredChat) logPinRef.current = true;
+    const count = usingApi ? conversation.messages.length : messages.length;
+    const lastRole = usingApi
+      ? conversation.messages[conversation.messages.length - 1]?.role
+      : messages[messages.length - 1]?.role;
+    if (count > logCountRef.current && lastRole === "user")
+      logPinRef.current = true;
+    logCountRef.current = count;
+    if (!logPinRef.current) return;
+    logStickRef.current = true;
+    node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
+    window.requestAnimationFrame(() => {
+      logStickRef.current = false;
+    });
   }, [
     messages,
     mockPreview,
     screen,
     conversation.messages,
     conversation.streaming,
+    usingApi,
   ]);
   useEffect(() => {
     if (!toast) return;
@@ -697,6 +756,7 @@ export default function Home() {
                 role="log"
                 aria-label="대화"
                 aria-live="polite"
+                onScroll={onLogScroll}
               >
                 {(usingApi
                   ? conversation.messages
@@ -711,7 +771,8 @@ export default function Home() {
                       status: "complete" as const,
                       crisisFixed: false,
                     }))
-                ).map((message) => (
+                ).map((message) => {
+                  return (
                   <div
                     className={`nf-message nf-message-${message.role}`}
                     key={message.messageId}
@@ -723,7 +784,23 @@ export default function Home() {
                       {message.role === "mio" && (
                         <span className="nf-speaker">미오</span>
                       )}
-                      <p>{message.content}</p>
+                      <p>
+                        {usingApi &&
+                        message.role === "mio" &&
+                        message.messageId === latestMioId ? (
+                          <TypedMioText
+                            id={message.messageId}
+                            text={message.content}
+                            live={message.status === "streaming"}
+                            networkStreaming={conversation.streaming}
+                            cancelled={typingCancelled}
+                            onPending={onTypingPending}
+                            onStick={stickLog}
+                          />
+                        ) : (
+                          message.content
+                        )}
+                      </p>
                       {message.status === "failed" ? (
                         <small>보내지 못했어요</small>
                       ) : null}
@@ -734,7 +811,8 @@ export default function Home() {
                       ) : null}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 {!usingApi && mockPreview && (
                   <div className="nf-message nf-message-mio" aria-hidden="true">
                     <span className="nf-message-star">✳</span>
@@ -760,6 +838,7 @@ export default function Home() {
                     mode={conversation.mode}
                     state={conversation.state}
                     streaming={conversation.streaming}
+                    holdFollowUp={typingHold}
                     blocked={conversation.blocked || conversation.deleted}
                     maxContentChars={conversation.limits.maxContentChars}
                     suggestions={conversation.suggestions}

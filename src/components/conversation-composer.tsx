@@ -14,6 +14,7 @@ type ConversationComposerProps = {
   mode: ServerMode | null;
   state: ConversationState;
   streaming: boolean;
+  holdFollowUp?: boolean;
   blocked: boolean;
   maxContentChars: number;
   suggestions: string[];
@@ -45,6 +46,7 @@ export function ConversationComposer({
   mode,
   state,
   streaming,
+  holdFollowUp = false,
   blocked,
   maxContentChars,
   suggestions,
@@ -75,6 +77,8 @@ export function ConversationComposer({
   const hasTray = Boolean(tools) || suggestionItems.length > 0;
   const showInput = !ended;
   const busy = streaming;
+  // 타이핑 종료 전 후속 안내 숨김
+  const answering = streaming || holdFollowUp;
   const sendDisabled = busy || ended || !draft.trim();
   const showOpeningExamples =
     mode === "live" && openingExamples.length > 0 && !ended;
@@ -167,7 +171,7 @@ export function ConversationComposer({
         </div>
       )}
       <div className="nf-mock-status" role="status">
-        {streaming
+        {answering
           ? "답변을 이어 쓰고 있어요…"
           : state === "pause"
             ? "질문을 멈췄어요. 이어서 말하려면 재개하거나 직접 입력해 주세요."
@@ -185,7 +189,15 @@ export function ConversationComposer({
         </p>
       ) : null}
       {(state === "wait" || state === "pause") && !ended && (
-        <div className="nf-conversation-rest">
+        <div
+          className={
+            holdFollowUp
+              ? "nf-conversation-rest nf-conversation-rest-held"
+              : "nf-conversation-rest"
+          }
+          inert={holdFollowUp}
+          aria-hidden={holdFollowUp || undefined}
+        >
           <p>
             {state === "pause"
               ? "질문은 이 대화가 끝날 때까지 이어지지 않아요."
