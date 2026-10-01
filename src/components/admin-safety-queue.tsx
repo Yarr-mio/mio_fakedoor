@@ -19,6 +19,9 @@ import {
 } from "@/lib/api/admin";
 import { handleAdminUnauthorized } from "@/lib/admin-api-key";
 
+// 원문 구간과 재검토 화면 활성 여부
+export const SAFETY_SEGMENT_REVIEW_ENABLED: boolean = false;
+
 const REVIEW_ACTION_LABELS: Record<AdminReviewAction, string> = {
   confirmed: "실제 위기",
   false_positive: "오탐",
@@ -99,6 +102,7 @@ export function AdminSafetyQueue({
   }
 
   async function openSegment(event: AdminSafetyEvent) {
+    if (!SAFETY_SEGMENT_REVIEW_ENABLED) return;
     setSegment(null);
     setSegmentError("");
     setReviewResult(null);
@@ -124,6 +128,7 @@ export function AdminSafetyQueue({
   }
 
   async function submitReview() {
+    if (!SAFETY_SEGMENT_REVIEW_ENABLED) return;
     if (!reviewEventId || !action) return;
     if (!hasAdminAccessToken(await resolveAdminAccessToken(tokenSource))) {
       setMessage(
@@ -192,6 +197,12 @@ export function AdminSafetyQueue({
         <p className="dash-status" role="status">
           {message}
         </p>
+        {SAFETY_SEGMENT_REVIEW_ENABLED ? null : (
+          <p>
+            원문 구간과 재검토는 Safety 권한 키가 설정되지 않아 사용할 수
+            없습니다
+          </p>
+        )}
         {events.length === 0 ? (
           <p className="dash-empty">
             서버 목록을 아직 불러오지 않았습니다. 토큰이 없으면 호출하지
@@ -232,18 +243,20 @@ export function AdminSafetyQueue({
                       {event.replaced ? " · 교체" : ""}
                     </td>
                     <td>
-                      {event.kind !== "crisis" ? (
-                        "원문 구간 없음"
-                      ) : event.contentAvailable ? (
-                        <button
-                          type="button"
-                          onClick={() => void openSegment(event)}
-                        >
-                          구간 열람
-                        </button>
-                      ) : (
-                        "원문 없음"
-                      )}
+                      {event.kind !== "crisis"
+                        ? "원문 구간 없음"
+                        : event.contentAvailable
+                          ? SAFETY_SEGMENT_REVIEW_ENABLED
+                            ? (
+                              <button
+                                type="button"
+                                onClick={() => void openSegment(event)}
+                              >
+                                구간 열람
+                              </button>
+                            )
+                            : "원문 있음"
+                          : "원문 없음"}
                     </td>
                     <td>{event.reviewedAt ?? "미검토"}</td>
                     <td>{event.conversationId}</td>
@@ -260,8 +273,10 @@ export function AdminSafetyQueue({
             </button>
           </div>
         )}
-        {segmentError && <p className="dash-warning">{segmentError}</p>}
-        {segment && (
+        {SAFETY_SEGMENT_REVIEW_ENABLED && segmentError && (
+          <p className="dash-warning">{segmentError}</p>
+        )}
+        {SAFETY_SEGMENT_REVIEW_ENABLED && segment && (
           <div className="dash-segment">
             <h3>원문 구간 · 신호 발화 앞뒤 1턴</h3>
             <p>
