@@ -1,3 +1,4 @@
+import { optionalAdminAuthorization } from '@/lib/admin-api-key';
 import { apiRequest } from './client';
 import { ApiError, ApiTransportError, isApiError } from './errors';
 import {
@@ -262,6 +263,7 @@ export function recordConsent(input: {
     path: '/v1/consent',
     body,
     idempotencyKey: input.idempotencyKey,
+    authorization: optionalAdminAuthorization(),
   }).then((result) => ({
     ...result,
     data: parseRecordConsentData(result.data),

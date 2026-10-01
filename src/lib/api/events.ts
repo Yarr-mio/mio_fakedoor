@@ -1,3 +1,4 @@
+import { optionalAdminAuthorization } from "@/lib/admin-api-key";
 import { apiRequest } from "./client";
 import { ApiError } from "./errors";
 import {
@@ -275,6 +276,7 @@ export async function postEvents(
     path: "/v1/events",
     body: { events },
     keepalive: true,
+    authorization: optionalAdminAuthorization(),
   });
   return {
     ...result,

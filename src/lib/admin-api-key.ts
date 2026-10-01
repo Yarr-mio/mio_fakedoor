@@ -33,6 +33,14 @@ export function readAdminApiKey(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+export function optionalAdminAuthorization(
+  storage: KeyStorage | null = defaultStorage(),
+): string | undefined {
+  const key = readAdminApiKey(storage);
+  if (!key) return undefined;
+  return `Bearer ${key}`;
+}
+
 export function clearAdminApiKey(
   storage: KeyStorage | null = defaultStorage(),
 ) {
