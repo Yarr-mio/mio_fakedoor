@@ -1627,6 +1627,10 @@
   .nf-chat-controls {
     padding: 11px 16px max(11px, env(safe-area-inset-bottom));
   }
+  /* 모바일 안내 버튼과 입력창 간격 */
+  .nf-mock-composer > .nf-conversation-rest:not(:last-child) {
+    margin-bottom: 16px;
+  }
   .nf-quick-actions {
     gap: 6px;
   }
@@ -3139,6 +3143,11 @@
 .nf-crisis-review a {
   margin-left: 8px;
   color: #6047a2;
+}
+/* 타이핑 중 안내 박스 자리 유지 */
+.nf-conversation-rest-held {
+  visibility: hidden;
+  pointer-events: none;
 }
 .nf-conversation-rest p {
   font-size: 14px;
